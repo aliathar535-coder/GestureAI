@@ -420,19 +420,23 @@ public class FloatingOverlayService extends Service {
         showSimplePanel();
     }
 
-    private void showSimplePanel() {
-        WindowManager.LayoutParams p =
-            new WindowManager.LayoutParams(
-                dp(310),
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                overlayType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT
-            );
+    
+private void showSimplePanel() {
+    WindowManager.LayoutParams p =
+        new WindowManager.LayoutParams(
+            dp(310),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        );
 
-        p.gravity = Gravity.CENTER;
-        wm.addView(panel, p);
-    }
+    p.gravity = Gravity.CENTER;
+    p.softInputMode =
+        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+
+    wm.addView(panel, p);
+}
 
     private void closePanel() {
         if (panel != null && wm != null) {
