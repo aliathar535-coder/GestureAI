@@ -1,0 +1,75 @@
+GESTURE AI - MOBILE GITHUB UPLOAD GUIDE (HINDI)
+
+IMPORTANT:
+1) ZIP ko pehle File Manager me Extract karein.
+2) Extract hone ke baad GestureAI_Starter naam ka folder dikhega.
+3) GitHub repository ke ROOT me isi folder ke ANDAR ki files/folders upload karni hain.
+4) GestureAI_Starter naam ka outer folder GitHub par as a folder upload mat karein. Uske andar ka content repository ke root me jayega.
+5) File/folder ke naam bilkul same rakhein. Capital/small letters aur dot (.) miss na karein.
+
+FINAL FOLDER TREE:
+GestureAI_Starter/                 (ye ZIP ka outer folder hai; GitHub root me iska naam nahi banana)
+  .github/
+    workflows/
+      android.yml
+  app/
+    build.gradle
+    src/
+      main/
+        AndroidManifest.xml
+        assets/
+          index.html
+        java/
+          com/
+            gestureai/
+              demo/
+                MainActivity.java
+  build.gradle
+  gradle.properties
+  settings.gradle
+  README_HINDI.txt
+
+GITHUB ROOT PAR YE ITEMS HONE CHAHIYE:
+.github/
+app/
+build.gradle
+gradle.properties
+settings.gradle
+README_HINDI.txt
+
+UPLOAD ORDER (folders first):
+A) .github
+   B) workflows
+      C) android.yml
+B) app
+   C) build.gradle
+   C) src
+      D) main
+         E) AndroidManifest.xml
+         E) assets
+            F) index.html
+         E) java
+            F) com
+               G) gestureai
+                  H) demo
+                     I) MainActivity.java
+C) root files: build.gradle, gradle.properties, settings.gradle, README_HINDI.txt
+
+GITHUB MOBILE:
+- Repository kholo.
+- Add file > Upload files dabao.
+- File picker me extracted GestureAI_Starter folder kholo.
+- Agar picker folder select karne de, to andar ke items select karo; outer GestureAI_Starter folder ko upload mat karo.
+- Agar nested folders select nahi hote, to GitHub me Add file > Create new file use karke file path likho (example: app/src/main/assets/index.html). Lekin har file ka poora content paste karna padega; isliye ZIP ko extract karke multi-select upload zyada aasaan hai.
+- Upload ke baad Commit changes dabao.
+
+BUILD:
+- Repository me Actions kholo.
+- "Build Gesture AI APK" workflow kholo.
+- "Run workflow" dabao.
+- Run complete hone par green tick aana chahiye.
+- Run ke andar Artifacts me "Gesture-AI-debug-apk" download karo.
+- ZIP artifact extract karke APK install karein.
+
+LIMIT:
+Ye starter demo/WebView interface hai. Ye abhi real hand/face tracking, arbitrary apps ko gesture se control karna, ya reliable background camera service implement nahi karta. Un features ke liye native Android services aur on-device recognition code alag se banana hoga.
