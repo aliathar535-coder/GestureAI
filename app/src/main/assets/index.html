@@ -1,1 +1,55 @@
-
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#101827"><title>Gesture AI</title>
+<style>
+:root{--bg:#0b1220;--panel:#151f32;--panel2:#1c2940;--text:#f4f7ff;--muted:#9eacc5;--accent:#4ee1c1;--accent2:#8b7cff;--line:#2b3b57}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#26365d 0,var(--bg) 42%);color:var(--text);font:15px system-ui, sans-serif}
+header{position:sticky;top:0;z-index:4;background:#0b1220ed;backdrop-filter:blur(12px);padding:15px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+h1{font-size:20px;margin:0}small,.muted{color:var(--muted)}button,select,input{font:inherit}button{border:0;border-radius:12px;padding:10px 13px;background:var(--accent);color:#07131b;font-weight:700}
+.iconbtn{background:var(--panel2);color:var(--text);font-size:19px}.wrap{padding:14px;max-width:760px;margin:auto}
+.hero{background:linear-gradient(120deg,#21395b,#28254c);border:1px solid #53638a;border-radius:20px;padding:17px;margin-bottom:14px}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between}.tabs{display:flex;gap:8px;overflow:auto;margin:14px 0}.tabs button{white-space:nowrap;background:var(--panel2);color:var(--text)}.tabs button.active{background:var(--accent);color:#07131b}
+.card{background:linear-gradient(145deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:17px;padding:15px;margin:12px 0}
+.card h2{font-size:17px;margin:0 0 5px}.sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+.switch{display:flex;align-items:center;gap:8px}.switch input{width:20px;height:20px;accent-color:var(--accent)}
+label{display:block;color:var(--muted);font-size:12px;margin:12px 0 5px}input[type=range]{width:100%;accent-color:var(--accent)}input[type=text],select{width:100%;background:#0c1525;color:var(--text);border:1px solid var(--line);padding:11px;border-radius:10px}
+.camera{width:100%;aspect-ratio:4/3;background:#050a12;border-radius:14px;object-fit:cover;border:1px solid var(--line)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.secondary{background:#354764;color:white}.danger{background:#ff6e7b;color:#24060a}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px}.slot{background:#0d1728;color:var(--text);border:1px solid var(--line);border-radius:10px;min-height:54px;padding:5px;font-size:11px}.slot.on{border-color:var(--accent);background:#123b3b}.slot span{display:block;font-size:17px}
+.page{display:none}.page.active{display:block}.note{font-size:12px;color:var(--muted);line-height:1.5}.palette{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}.swatch{height:34px;border-radius:9px;border:2px solid #ffffff33}
+hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+</style></head>
+<body>
+<header><div><h1>✦ Gesture AI</h1><small>Camera • Voice • Hand • Face</small></div><button class="iconbtn" onclick="showPage('settings')">⚙</button></header>
+<div class="wrap">
+<div class="hero"><div class="row"><div><b>MASTER CONTROL</b><div class="note">सभी मॉड्यूल का मुख्य स्विच</div></div><label class="switch"><input id="master" type="checkbox" checked onchange="masterToggle()"> चालू</label></div><p class="note" id="masterState">डेमो मोड: सेटिंग और स्लॉट सेव होते हैं।</p></div>
+<div class="tabs">
+<button class="active" onclick="showPage('hand',this)">✋ Hand</button><button onclick="showPage('voice',this)">🎙 Voice</button><button onclick="showPage('face',this)">👁 Face</button><button onclick="showPage('radar',this)">◉ Radar</button><button onclick="showPage('settings',this)">⚙ Settings</button>
+</div>
+<section id="hand" class="page active">
+<div class="card"><h2>✋ Hand & Finger Gestures</h2><div class="sub">हाथ की गति और दूरी सेट करें</div><label class="switch"><input type="checkbox" checked> Hand tracking ON</label><label>Tracking distance</label><input type="range" min="20" max="250" value="100"><label>Detection sensitivity</label><input type="range" min="1" max="100" value="70"><div class="actions"><button onclick="startCamera('hand')">कैमरा खोलें</button><button class="secondary" onclick="stopCamera()">बंद करें</button></div><video id="cam-hand" class="camera" autoplay muted playsinline></video><div class="actions"><button onclick="saveGesture('hand')">＋ Gesture सेव करें</button></div><div class="grid" id="handGrid"></div></div>
+</section>
+<section id="voice" class="page">
+<div class="card"><h2>🎙 Voice Gesture Control</h2><div class="sub">हिंदी/अंग्रेज़ी वॉइस कमांड का डेमो</div><label class="switch"><input type="checkbox" checked> Voice control ON</label><label>Hindi accent confidence</label><input type="range" min="1" max="100" value="75"><label>Noise cancellation level</label><input type="range" min="0" max="100" value="60"><input id="voiceText" type="text" placeholder="कमांड लिखें, जैसे: अगला ऐप खोलो"><div class="actions"><button onclick="listenVoice()">🎙 बोलकर जोड़ें</button><button class="secondary" onclick="saveGesture('voice')">＋ सेव करें</button></div><div class="grid" id="voiceGrid"></div><p class="note">वॉइस पहचान डिवाइस/ब्राउज़र की speech recognition सुविधा पर निर्भर है।</p></div>
+</section>
+<section id="face" class="page">
+<div class="card"><h2>👁 Face & Eye Movement</h2><div class="sub">चेहरे, आंख और सिर की गति के स्लॉट</div><label class="switch"><input type="checkbox" checked> Face tracking ON</label><label>Face distance</label><input type="range" min="20" max="250" value="90"><label>Eye movement sensitivity</label><input type="range" min="1" max="100" value="65"><div class="actions"><button onclick="startCamera('face')">फ्रंट कैमरा खोलें</button><button class="secondary" onclick="stopCamera()">बंद करें</button></div><video id="cam-face" class="camera" autoplay muted playsinline></video><div class="actions"><button onclick="saveGesture('face')">＋ Face gesture सेव करें</button></div><div class="grid" id="faceGrid"></div></div>
+</section>
+<section id="radar" class="page"><div class="card"><h2>◉ Radar & Proximity</h2><label class="switch"><input type="checkbox"> Radar detection ON</label><label>Radar sensitivity</label><input type="range" min="1" max="100" value="50"><p class="note">यह अभी UI डेमो है। वास्तविक proximity/radar सेंसर उपलब्ध हार्डवेयर पर निर्भर होंगे।</p><div class="actions"><button class="secondary" onclick="alert('Radar demo setting saved')">सेटिंग सेव करें</button></div></div></section>
+<section id="settings" class="page">
+<div class="card"><h2>⚙ App Settings & Color Studio</h2><label class="switch"><input id="settingMaster" type="checkbox" checked onchange="document.getElementById('master').checked=this.checked;masterToggle()"> Master ON/OFF</label><label>Color grade style (30 presets)</label><div class="palette" id="presets"></div><label>Manual color grading</label><input type="range" min="0" max="100" value="50"><label>Angle adjustment</label><input type="range" min="0" max="360" value="45"><label>Mix 2–5 colors</label><div class="palette" id="mixes"></div><label>Text design (50 styles)</label><select id="textStyle"></select><label>Text color (30 choices)</label><input type="color" value="#4ee1c1" onchange="document.documentElement.style.setProperty('--accent',this.value)"><label>Background color</label><input type="color" value="#0b1220" onchange="document.documentElement.style.setProperty('--bg',this.value)"><p class="note">रंग और टेक्स्ट विकल्प डेमो UI में लागू होते हैं।</p></div>
+</section>
+<p class="note">महत्वपूर्ण: यह पहला UI prototype है। अभी gesture पहचानकर दूसरे ऐप चलाना, सभी ऐप्स पर background में लगातार काम करना, और Android accessibility actions चालू नहीं हैं। इनके लिए अलग native Android service, Accessibility permission और foreground-service implementation चाहिए।</p>
+</div>
+<script>
+let streams={};
+function showPage(id,btn){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');}
+async function startCamera(which){try{stopCamera();let stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:which==='face'?'user':'environment'},audio:false});streams[which]=stream;document.getElementById('cam-'+which).srcObject=stream;}catch(e){alert('कैमरा अनुमति दें। '+e.message)}}
+function stopCamera(){Object.values(streams).forEach(s=>s.getTracks().forEach(t=>t.stop()));streams={};document.querySelectorAll('video').forEach(v=>v.srcObject=null)}
+function saveGesture(type){let name=type==='voice'?(document.getElementById('voiceText').value||'Voice command'):(type==='hand'?'Hand gesture':'Face gesture');let grid=document.getElementById(type+'Grid');let n=grid.children.length+1;if(n>100){alert('इस डेमो में 100 स्लॉट की सीमा है');return}let b=document.createElement('button');b.className='slot on';b.innerHTML='<span>✦</span>'+name+'<br>टच: हटाएँ';b.onclick=()=>b.remove();grid.appendChild(b)}
+function listenVoice(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert('इस डिवाइस में speech recognition उपलब्ध नहीं है।');return}let r=new SR();r.lang='hi-IN';r.onresult=e=>document.getElementById('voiceText').value=e.results[0][0].transcript;r.start()}
+function masterToggle(){let on=document.getElementById('master').checked;document.getElementById('settingMaster').checked=on;document.getElementById('masterState').textContent=on?'डेमो मोड चालू':'Master OFF — डेमो कंट्रोल बंद';if(!on)stopCamera()}
+for(let i=0;i<30;i++){let d=document.createElement('div');d.className='swatch';d.style.background=`hsl(${i*12},65%,${35+(i%4)*10}%)`;document.getElementById('presets').appendChild(d);let m=document.createElement('div');m.className='swatch';m.style.background=`linear-gradient(${i*12}deg,hsl(${i*12},75%,55%),hsl(${(i*12+100)%360},70%,45%),hsl(${(i*12+220)%360},70%,55%))`;document.getElementById('mixes').appendChild(m)}
+for(let i=1;i<=50;i++){let o=document.createElement('option');o.textContent='Text style '+i;document.getElementById('textStyle').appendChild(o)}
+</script></body></html>
