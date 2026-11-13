@@ -8,14 +8,13 @@ import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
-import android.view.View;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -31,24 +30,41 @@ public class FloatingOverlayService extends Service {
 
     private WindowManager wm;
     private TextView plus;
-    private View panelView;
-
+    private ViewHolder panel;
     private final ArrayList<Item> items = new ArrayList<>();
 
     private static final String PREF = "gesture_float_data";
-    private static final String KEY = "buttons";
+    private static final String PROFILES = "app_profiles";
 
-    private int nextNumber = 1;
+    private String activeProfile = "default";
+    private Handler handler = new Handler(Looper.getMainLooper());
+
+    private final Runnable profileChecker = new Runnable() {
+        @Override
+        public void run() {
+            String pkg = GestureAccessibilityService.getForegroundPackage();
+
+            if (pkg != null && !pkg.isEmpty()
+                    && !pkg.equals(getPackageName())
+                    && !pkg.equals(activeProfile)) {
+                switchProfile(pkg);
+            }
+
+            handler.postDelayed(this, 1000);
+        }
+    };
+
+    private class ViewHolder {
+        android.view.View view;
+    }
 
     private class Item {
         int number;
         String command;
-        int x;
-        int y;
+        int x, y;
         boolean enabled = true;
         TextView view;
         WindowManager.LayoutParams params;
-
         float startX, startY;
         int initialX, initialY;
         boolean moved;
@@ -58,21 +74,28 @@ public class FloatingOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
 
-        if (Build.VERSION.SDK_INT >= 23 &&
-                !Settings.canDrawOverlays(this)) {
+        if (Build.VERSION.SDK_INT >= 23
+                && !Settings.canDrawOverlays(this)) {
             stopSelf();
             return;
         }
 
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
 
-        loadItems();
+        activeProfile = GestureAccessibilityService.getForegroundPackage();
+        if (activeProfile == null || activeProfile.isEmpty()
+                || activeProfile.equals(getPackageName())) {
+            activeProfile = "default";
+        }
+
         showPlus();
+        loadProfile(activeProfile);
+        handler.postDelayed(profileChecker, 1000);
     }
 
     private int dp(float value) {
-        return (int) (value *
-                getResources().getDisplayMetrics().density);
+        return (int) (value * getResources()
+                .getDisplayMetrics().density);
     }
 
     private int overlayType() {
@@ -84,15 +107,11 @@ public class FloatingOverlayService extends Service {
 
     private WindowManager.LayoutParams makeParams(
             int x, int y, int size) {
-
         WindowManager.LayoutParams p =
                 new WindowManager.LayoutParams(
-                        size, size,
-                        overlayType(),
+                        size, size, overlayType(),
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                        PixelFormat.TRANSLUCENT
-                );
-
+                        PixelFormat.TRANSLUCENT);
         p.gravity = Gravity.TOP | Gravity.START;
         p.x = x;
         p.y = y;
@@ -114,13 +133,98 @@ public class FloatingOverlayService extends Service {
     private void showPlus() {
         plus = makeButton("+");
         plus.setTextSize(27);
-        plusParamsSetup();
         plus.setOnClickListener(v -> showManager());
         wm.addView(plus, makeParams(dp(25), dp(180), dp(58)));
     }
 
-    private void plusParamsSetup() {
-        // Plus button settings are handled by WindowManager.
+    private void switchProfile(String packageName) {
+        if (packageName == null || packageName.isEmpty()) return;
+
+        saveProfile();
+
+        for (Item item : items) {
+            try {
+                if (item.view != null) wm.removeView(item.view);
+            } catch (Exception ignored) {}
+        }
+        items.clear();
+        closePanel();
+
+        activeProfile = packageName;
+        loadProfile(activeProfile);
+    }
+
+    private void loadProfile(String packageName) {
+        items.clear();
+
+        String all = getSharedPreferences(PREF, MODE_PRIVATE)
+                .getString(PROFILES, "{}");
+
+        try {
+            JSONObject profiles = new JSONObject(all);
+            JSONArray array = profiles.optJSONArray(packageName);
+
+            if (array == null) return;
+
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+
+                Item item = new Item();
+                item.number = obj.getInt("number");
+                item.command = obj.getString("command");
+                item.x = obj.getInt("x");
+                item.y = obj.getInt("y");
+                item.enabled = obj.optBoolean("enabled", true);
+
+                item.view = makeButton(String.valueOf(item.number));
+                item.params = makeParams(item.x, item.y, dp(58));
+
+                updateButton(item);
+                attachTouch(item);
+                wm.addView(item.view, item.params);
+                items.add(item);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void saveProfile() {
+        try {
+            String all = getSharedPreferences(PREF, MODE_PRIVATE)
+                    .getString(PROFILES, "{}");
+
+            JSONObject profiles = new JSONObject(all);
+            JSONArray array = new JSONArray();
+
+            for (Item item : items) {
+                JSONObject obj = new JSONObject();
+                obj.put("number", item.number);
+                obj.put("command", item.command);
+                obj.put("x", item.params.x);
+                obj.put("y", item.params.y);
+                obj.put("enabled", item.enabled);
+                array.put(obj);
+            }
+
+            profiles.put(activeProfile, array);
+
+            getSharedPreferences(PREF, MODE_PRIVATE)
+                    .edit()
+                    .putString(PROFILES, profiles.toString())
+                    .apply();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int nextNumber() {
+        int max = 0;
+        for (Item item : items) {
+            max = Math.max(max, item.number);
+        }
+        return max + 1;
     }
 
     private void showPanel(String heading) {
@@ -139,33 +243,29 @@ public class FloatingOverlayService extends Service {
         TextView title = new TextView(this);
         title.setText(heading);
         title.setTextColor(Color.WHITE);
-        title.setTextSize(20);
+        title.setTextSize(18);
         title.setTypeface(null, Typeface.BOLD);
-        title.setPadding(0, 0, 0, dp(12));
         root.addView(title);
 
-        panelView = root;
+        panel = new ViewHolder();
+        panel.view = root;
 
         WindowManager.LayoutParams p =
                 new WindowManager.LayoutParams(
-                        dp(330),
-                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        dp(330), WindowManager.LayoutParams.WRAP_CONTENT,
                         overlayType(),
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                        PixelFormat.TRANSLUCENT
-                );
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                        PixelFormat.TRANSLUCENT);
 
         p.gravity = Gravity.CENTER;
         p.softInputMode =
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
         try {
-            wm.addView(panelView, p);
+            wm.addView(panel.view, p);
         } catch (Exception e) {
-            panelView = null;
-            Toast.makeText(this,
-                    "Panel nahi khul paya",
+            panel = null;
+            Toast.makeText(this, "Panel nahi khula",
                     Toast.LENGTH_SHORT).show();
         }
     }
@@ -174,32 +274,26 @@ public class FloatingOverlayService extends Service {
         TextView b = new TextView(this);
         b.setText(text);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(14);
+        b.setTextSize(13);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(10), dp(10), dp(10), dp(10));
+        b.setPadding(dp(5), dp(8), dp(5), dp(8));
         b.setBackgroundColor(Color.rgb(35, 95, 180));
 
         LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(
-                        0, dp(44), 1
-                );
-        lp.setMargins(dp(3), dp(4), dp(3), dp(4));
-
-        b.setOnClickListener(v -> task());
+                new LinearLayout.LayoutParams(0, dp(42), 1);
+        lp.setMargins(dp(2), dp(3), dp(2), dp(3));
         b.setTag(lp);
+        b.setOnClickListener(v -> task());
         return b;
     }
 
-    private void addActionRow(LinearLayout parent,
-                              TextView... buttons) {
+    private void addRow(LinearLayout parent, TextView... buttons) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
 
         for (TextView b : buttons) {
-            row.addView(b,
-                    (LinearLayout.LayoutParams) b.getTag());
+            row.addView(b, (LinearLayout.LayoutParams) b.getTag());
         }
-
         parent.addView(row);
     }
 
@@ -210,46 +304,38 @@ public class FloatingOverlayService extends Service {
         input.setHintTextColor(Color.LTGRAY);
         input.setHint(hint);
         input.setText(value);
-        input.setPadding(dp(10), dp(5), dp(10), dp(5));
         input.setBackgroundColor(Color.rgb(43, 55, 78));
         return input;
     }
 
     private void showManager() {
-        showPanel("⚙ Floating Button Manager");
+        showPanel("Floating Buttons");
 
-        if (panelView == null) return;
+        if (panel == null) return;
+        LinearLayout root = (LinearLayout) panel.view;
 
-        LinearLayout root = (LinearLayout) panelView;
+        TextView appName = new TextView(this);
+        appName.setText("Current App: " + activeProfile);
+        appName.setTextColor(Color.LTGRAY);
+        appName.setTextSize(11);
+        root.addView(appName);
 
-        EditText input = makeInput(
-                "Naye button ka naam likhein", "");
-
+        EditText input = makeInput("Naye button ka naam", "");
         root.addView(input);
 
-        addActionRow(root,
-                action("＋ Add Button", () -> {
+        addRow(root,
+                action("Add", () -> {
                     String name = input.getText().toString().trim();
-
                     if (name.isEmpty()) {
-                        Toast.makeText(this,
-                                "Naam likhein",
+                        Toast.makeText(this, "Naam likhein",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
-
                     addItem(name);
                     showManager();
                 }),
                 action("Close", this::closePanel)
         );
-
-        TextView listTitle = new TextView(this);
-        listTitle.setText("Aapke Floating Buttons:");
-        listTitle.setTextColor(Color.WHITE);
-        listTitle.setTextSize(16);
-        listTitle.setPadding(0, dp(12), 0, dp(8));
-        root.addView(listTitle);
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout list = new LinearLayout(this);
@@ -258,94 +344,78 @@ public class FloatingOverlayService extends Service {
         for (Item item : items) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(dp(7), dp(7), dp(7), dp(7));
+            row.setPadding(dp(6), dp(6), dp(6), dp(6));
             row.setBackgroundColor(Color.rgb(34, 47, 69));
 
             TextView name = new TextView(this);
             name.setText(item.number + ". " + item.command
-                    + (item.enabled ? "  [ON]" : "  [OFF]"));
+                    + (item.enabled ? " [ON]" : " [OFF]"));
             name.setTextColor(Color.WHITE);
-            name.setTextSize(15);
             row.addView(name);
 
-            addActionRow(row,
+            addRow(row,
                     action("Edit", () -> showEdit(item)),
-                    action(item.enabled ? "Disable" : "Enable",
-                            () -> {
-                                item.enabled = !item.enabled;
-                                updateButton(item);
-                                saveItems();
-                                showManager();
-                            }),
+                    action(item.enabled ? "OFF" : "ON", () -> {
+                        item.enabled = !item.enabled;
+                        updateButton(item);
+                        saveProfile();
+                        showManager();
+                    }),
                     action("Test", () -> {
                         closePanel();
                         performItem(item);
                     })
             );
 
-            addActionRow(row,
-                    action("Remove", () -> showRemoveConfirm(item))
-            );
+            addRow(row, action("Remove", () -> showRemove(item)));
 
-            LinearLayout.LayoutParams rowLp =
-                    new LinearLayout.LayoutParams(
-                            -1, -2);
-            rowLp.setMargins(0, dp(4), 0, dp(4));
-            list.addView(row, rowLp);
+            LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, dp(4), 0, dp(4));
+            list.addView(row, lp);
         }
 
         scroll.addView(list);
-        root.addView(scroll,
-                new LinearLayout.LayoutParams(-1, dp(260)));
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(250)));
     }
 
     private void showEdit(Item item) {
         showPanel("Edit Button " + item.number);
+        if (panel == null) return;
 
-        if (panelView == null) return;
-
-        LinearLayout root = (LinearLayout) panelView;
-        EditText input = makeInput(
-                "Button ka naya naam", item.command);
+        LinearLayout root = (LinearLayout) panel.view;
+        EditText input = makeInput("Naya naam", item.command);
         root.addView(input);
 
-        addActionRow(root,
+        addRow(root,
                 action("Save", () -> {
                     String name = input.getText().toString().trim();
-
-                    if (name.isEmpty()) {
-                        Toast.makeText(this,
-                                "Naam khali nahi ho sakta",
-                                Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
+                    if (name.isEmpty()) return;
                     item.command = name;
-                    updateButton(item);
-                    saveItems();
+                    saveProfile();
                     showManager();
                 }),
                 action("Cancel", this::showManager)
         );
     }
 
-    private void showRemoveConfirm(Item item) {
+    private void showRemove(Item item) {
         showPanel("Remove Button?");
+        if (panel == null) return;
 
-        if (panelView == null) return;
+        LinearLayout root = (LinearLayout) panel.view;
+        TextView msg = new TextView(this);
+        msg.setText("Button " + item.number + " hatana hai?");
+        msg.setTextColor(Color.WHITE);
+        root.addView(msg);
 
-        LinearLayout root = (LinearLayout) panelView;
-
-        TextView message = new TextView(this);
-        message.setText("Button " + item.number +
-                " (" + item.command + ") ko hatana hai?");
-        message.setTextColor(Color.WHITE);
-        message.setTextSize(16);
-        root.addView(message);
-
-        addActionRow(root,
+        addRow(root,
                 action("Yes, Remove", () -> {
-                    removeItem(item);
+                    try {
+                        wm.removeView(item.view);
+                    } catch (Exception ignored) {}
+                    items.remove(item);
+                    saveProfile();
                     showManager();
                 }),
                 action("Cancel", this::showManager)
@@ -353,18 +423,17 @@ public class FloatingOverlayService extends Service {
     }
 
     private void closePanel() {
-        if (panelView != null && wm != null) {
+        if (panel != null && wm != null) {
             try {
-                wm.removeView(panelView);
-            } catch (Exception ignored) {
-            }
-            panelView = null;
+                wm.removeView(panel.view);
+            } catch (Exception ignored) {}
+            panel = null;
         }
     }
 
     private void addItem(String command) {
         Item item = new Item();
-        item.number = nextNumber++;
+        item.number = nextNumber();
         item.command = command;
         item.x = dp(25);
         item.y = dp(260 + (items.size() % 5) * 70);
@@ -375,44 +444,19 @@ public class FloatingOverlayService extends Service {
         attachTouch(item);
         wm.addView(item.view, item.params);
         items.add(item);
-
-        saveItems();
-
-        Toast.makeText(this,
-                "Button " + item.number + " save ho gaya",
-                Toast.LENGTH_SHORT).show();
+        saveProfile();
     }
 
     private void updateButton(Item item) {
         if (item.view == null) return;
 
-        item.view.setText(String.valueOf(item.number));
-
         if (item.enabled) {
-            item.view.setBackgroundColor(
-                    Color.rgb(30, 110, 230));
+            item.view.setBackgroundColor(Color.rgb(30, 110, 230));
             item.view.setAlpha(1f);
         } else {
-            item.view.setBackgroundColor(
-                    Color.rgb(90, 90, 90));
-            item.view.setAlpha(0.65f);
+            item.view.setBackgroundColor(Color.GRAY);
+            item.view.setAlpha(0.55f);
         }
-    }
-
-    private void removeItem(Item item) {
-        try {
-            if (item.view != null) {
-                wm.removeView(item.view);
-            }
-        } catch (Exception ignored) {
-        }
-
-        items.remove(item);
-        saveItems();
-
-        Toast.makeText(this,
-                "Button remove ho gaya",
-                Toast.LENGTH_SHORT).show();
     }
 
     private void attachTouch(Item item) {
@@ -430,8 +474,7 @@ public class FloatingOverlayService extends Service {
                     float dx = event.getRawX() - item.startX;
                     float dy = event.getRawY() - item.startY;
 
-                    if (Math.abs(dx) > dp(8) ||
-                            Math.abs(dy) > dp(8)) {
+                    if (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8)) {
                         item.moved = true;
                     }
 
@@ -444,9 +487,7 @@ public class FloatingOverlayService extends Service {
 
                 case MotionEvent.ACTION_UP:
                     if (item.moved) {
-                        item.x = item.params.x;
-                        item.y = item.params.y;
-                        saveItems();
+                        saveProfile();
                     } else {
                         performItem(item);
                     }
@@ -458,110 +499,44 @@ public class FloatingOverlayService extends Service {
 
     private void performItem(Item item) {
         if (!item.enabled) {
-            Toast.makeText(this,
-                    "Yeh button OFF hai",
+            Toast.makeText(this, "Button OFF hai",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
         if (!GestureAccessibilityService.isReady()) {
-            Toast.makeText(this,
-                    "Accessibility ON karein",
+            Toast.makeText(this, "Accessibility ON karein",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
         float x = item.params.x + dp(29);
         float y = item.params.y + dp(29);
-
         GestureAccessibilityService.tap(x, y);
     }
 
-    private void loadItems() {
-        String saved = getSharedPreferences(PREF, MODE_PRIVATE)
-                .getString(KEY, "[]");
-
-        try {
-            JSONArray array = new JSONArray(saved);
-
-            for (int i = 0; i < array.length(); i++) {
-                JSONObject obj = array.getJSONObject(i);
-
-                Item item = new Item();
-                item.number = obj.getInt("number");
-                item.command = obj.getString("command");
-                item.x = obj.getInt("x");
-                item.y = obj.getInt("y");
-                item.enabled = obj.optBoolean("enabled", true);
-
-                item.view = makeButton(
-                        String.valueOf(item.number));
-                item.params = makeParams(
-                        item.x, item.y, dp(58));
-
-                updateButton(item);
-                attachTouch(item);
-                wm.addView(item.view, item.params);
-
-                items.add(item);
-                nextNumber = Math.max(
-                        nextNumber, item.number + 1);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void saveItems() {
-        JSONArray array = new JSONArray();
-
-        try {
-            for (Item item : items) {
-                JSONObject obj = new JSONObject();
-                obj.put("number", item.number);
-                obj.put("command", item.command);
-                obj.put("x", item.params.x);
-                obj.put("y", item.params.y);
-                obj.put("enabled", item.enabled);
-                array.put(obj);
-            }
-
-            getSharedPreferences(PREF, MODE_PRIVATE)
-                    .edit()
-                    .putString(KEY, array.toString())
-                    .apply();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
     @Override
-    public int onStartCommand(Intent intent,
-                              int flags, int startId) {
+    public int onStartCommand(Intent intent, int flags, int startId) {
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        handler.removeCallbacks(profileChecker);
         closePanel();
 
         if (wm != null) {
             if (plus != null) {
                 try {
                     wm.removeView(plus);
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) {}
                 plus = null;
             }
 
             for (Item item : items) {
                 try {
-                    if (item.view != null) {
-                        wm.removeView(item.view);
-                    }
-                } catch (Exception ignored) {
-                }
+                    if (item.view != null) wm.removeView(item.view);
+                } catch (Exception ignored) {}
             }
         }
 
@@ -573,5 +548,4 @@ public class FloatingOverlayService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-            }
-            
+        }
