@@ -5,89 +5,46 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gesture AI</title>
-
 <style>
 *{box-sizing:border-box}
-body{
- margin:0;background:#080d1c;color:#fff;
- font-family:Arial,sans-serif;
-}
-header{
- padding:20px;background:linear-gradient(120deg,#101e42,#20205a);
- border-bottom:1px solid #334477;
-}
+body{margin:0;background:#080d1c;color:#fff;font-family:Arial,sans-serif}
+header{padding:20px;background:linear-gradient(120deg,#101e42,#20205a);border-bottom:1px solid #334477}
 .logo{font-size:25px;font-weight:900;color:#61eaff}
 .sub{color:#9caed1;font-size:12px;margin-top:5px}
-nav{
- display:flex;overflow-x:auto;gap:8px;padding:12px;
- background:#10172b;position:sticky;top:0;z-index:5;
-}
-nav button{
- white-space:nowrap;border:1px solid #334466;
- background:#182440;color:white;padding:11px 15px;
- border-radius:20px;
-}
+nav{display:flex;overflow-x:auto;gap:8px;padding:12px;background:#10172b;position:sticky;top:0;z-index:5}
+nav button{white-space:nowrap;border:1px solid #334466;background:#182440;color:white;padding:11px 15px;border-radius:20px}
 nav button.active{background:#087fba;border-color:#49dfff}
 main{padding:14px}
 .page{display:none}
 .page.active{display:block}
-.card{
- background:linear-gradient(145deg,#151f39,#10182d);
- border:1px solid #2c3e66;border-radius:17px;
- padding:16px;margin-bottom:14px;
- box-shadow:0 5px 18px #0005;
-}
+.card{background:linear-gradient(145deg,#151f39,#10182d);border:1px solid #2c3e66;border-radius:17px;padding:16px;margin-bottom:14px;box-shadow:0 5px 18px #0005}
 h2{font-size:19px;margin:0 0 14px;color:#67e6ff}
 h3{font-size:15px;color:#c6d8ff}
 p,.muted{font-size:13px;color:#9eb0d1;line-height:1.5}
-button,.btn{
- border:0;border-radius:11px;padding:12px 15px;
- color:white;background:#087eae;font-weight:bold;
- margin:4px 3px;cursor:pointer;
-}
+button,.btn{border:0;border-radius:11px;padding:12px 15px;color:white;background:#087eae;font-weight:bold;margin:4px 3px;cursor:pointer}
 button.secondary{background:#293957}
 button.danger{background:#a72d48}
-input,select{
- width:100%;padding:12px;margin:7px 0;
- border-radius:10px;border:1px solid #35496e;
- background:#0a1225;color:white;
-}
+input,select{width:100%;padding:12px;margin:7px 0;border-radius:10px;border:1px solid #35496e;background:#0a1225;color:white}
 input[type=color]{height:48px;padding:4px}
 input[type=range]{padding:0}
-video{
- width:100%;max-height:300px;background:#000;
- border-radius:13px;transform:scaleX(1);
-}
+video{width:100%;max-height:300px;background:#000;border-radius:13px;transform:scaleX(1)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row>*{flex:1;min-width:100px}
-.stat{
- background:#0b152b;border:1px solid #30466e;
- padding:13px;border-radius:12px;text-align:center;
-}
+.stat{background:#0b152b;border:1px solid #30466e;padding:13px;border-radius:12px;text-align:center}
 .stat strong{display:block;color:#65eaff;font-size:20px}
-.appitem{
- padding:12px;margin:7px 0;background:#0b152b;
- border:1px solid #293c60;border-radius:10px;
- display:flex;justify-content:space-between;align-items:center;
- gap:8px;
-}
+.appitem{padding:12px;margin:7px 0;background:#0b152b;border:1px solid #293c60;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .swatch{height:42px;border-radius:9px;border:2px solid #ffffff40}
-#preview{
- padding:25px;text-align:center;border-radius:12px;
- background:linear-gradient(120deg,#087eae,#6b36c8);
- font-size:23px;font-weight:bold;margin:12px 0;
-}
+#preview{padding:25px;text-align:center;border-radius:12px;background:linear-gradient(120deg,#087eae,#6b36c8);font-size:23px;font-weight:bold;margin:12px 0}
+.status{padding:12px;background:#0b152b;border:1px solid #30466e;border-radius:10px;margin:8px 0;font-size:13px;color:#b9d2f5}
 footer{text-align:center;color:#627493;font-size:11px;padding:20px}
 </style>
 </head>
-
 <body>
 <header>
  <div class="logo">✦ GESTURE AI</div>
  <div class="sub">SMART CONTROL • CAMERA • APP LAUNCHER • STUDIO</div>
 </header>
-
 <nav>
  <button class="active" onclick="showPage('home',this)">Home</button>
  <button onclick="showPage('hand',this)">Hand Control</button>
@@ -98,9 +55,7 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  <button onclick="showPage('text',this)">Text Studio</button>
  <button onclick="showPage('settings',this)">Settings</button>
 </nav>
-
 <main>
-
 <section id="home" class="page active">
  <div class="card">
   <h2>Welcome to Gesture AI</h2>
@@ -118,9 +73,9 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
   <button onclick="showPage('radar',document.querySelectorAll('nav button')[4])">Radar Panel</button>
  </div>
  <div class="card">
-  <h2>System Status</h2>
-  <p id="permissionStatus">Camera और microphone permission की जाँच करें।</p>
-  <button onclick="askPermission()">Check Permissions</button>
+  <h2>Permission Status</h2>
+  <div id="permissionStatus" class="status">Permission की स्थिति देखने के लिए नीचे दबाएँ।</div>
+  <button onclick="checkPermissions()">Check Permissions</button>
  </div>
 </section>
 
@@ -139,24 +94,19 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  </div>
  <div class="card">
   <h2>Gesture Action Setup</h2>
-  <p>यहाँ इशारे के लिए Action चुनें। वास्तविक gesture पहचान इंजन अभी जोड़ना बाकी है।</p>
+  <p>इशारे के लिए Action चुनें। वास्तविक gesture पहचान इंजन अभी जोड़ना बाकी है।</p>
   <label>Gesture</label>
   <select id="gestureName">
-   <option>Open Palm</option>
-   <option>Fist</option>
-   <option>Thumbs Up</option>
-   <option>One Finger</option>
-   <option>Two Fingers</option>
-   <option>Swipe Left</option>
+   <option>Open Palm</option><option>Fist</option>
+   <option>Thumbs Up</option><option>One Finger</option>
+   <option>Two Fingers</option><option>Swipe Left</option>
    <option>Swipe Right</option>
   </select>
   <label>Action</label>
   <select id="gestureAction">
    <option>Open Selected App</option>
-   <option>Volume Up</option>
-   <option>Volume Down</option>
-   <option>Next Action</option>
-   <option>Previous Action</option>
+   <option>Volume Up</option><option>Volume Down</option>
+   <option>Next Action</option><option>Previous Action</option>
   </select>
   <button onclick="saveGesture()">Save Gesture Rule</button>
   <div id="gestureRules"></div>
@@ -174,14 +124,14 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
   <button onclick="startCamera('faceVideo','faceFacing')">Start Face Camera</button>
   <button class="danger" onclick="stopCamera('faceVideo')">Stop Camera</button>
   <p id="faceMessage">Face camera बंद है।</p>
-  <p>चेहरे की वास्तविक पहचान, आँख और सिर की tracking के लिए Face Recognition Engine अगले चरण में जोड़ा जाएगा।</p>
+  <p>चेहरे की वास्तविक पहचान और tracking engine जोड़ना बाकी है।</p>
  </div>
 </section>
 
 <section id="apps" class="page">
  <div class="card">
   <h2>My Phone Apps</h2>
-  <p>फोन में उपलब्ध लॉन्चर ऐप्स लोड करें। सिस्टम और सामान्य ऐप दोनों दिख सकते हैं।</p>
+  <p>फोन में उपलब्ध लॉन्चर ऐप्स लोड करें।</p>
   <button onclick="loadApps()">Load Installed Apps</button>
   <input id="appSearch" placeholder="Search app..." oninput="filterApps()">
   <select id="appFilter" onchange="filterApps()">
@@ -210,10 +160,11 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
   <label><input type="checkbox" id="soundAlert"> Sound Alert</label>
   <label><input type="checkbox" id="vibrateAlert"> Vibration Alert</label>
   <button class="secondary" onclick="radarTest()">Test Alert</button>
-  <p>नोट: यह सेटिंग पैनल है। फोन में सामान्य-purpose Radar sensor नहीं होता। वास्तविक दूरी पहचानने के लिए समर्थित sensor या camera-based detection engine जरूरी है।</p>
+  <p>वास्तविक दूरी पहचानने के लिए समर्थित sensor या camera-based detection engine जरूरी है।</p>
  </div>
 </section>
-
+</main>
+</body>
 <section id="color" class="page">
  <div class="card">
   <h2>3 Color Mixer</h2>
@@ -257,21 +208,36 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
 
 <section id="settings" class="page">
  <div class="card">
-  <h2>Settings</h2>
-  <button onclick="askPermission()">Request Camera & Mic Permission</button>
+  <h2>Permission Settings</h2>
+  <p>Camera और Microphone की अनुमति अलग-अलग दी जाएगी।</p>
+  <button onclick="askCameraPermission()">Request Camera Permission</button>
+  <button class="secondary" onclick="askMicrophonePermission()">Request Microphone Permission</button>
+  <button class="secondary" onclick="checkPermissions()">Check Permission Status</button>
+  <div id="settingsPermissionStatus" class="status">Permission की स्थिति यहाँ दिखेगी।</div>
+  <p>Voice Control के लिए Microphone अनुमति जरूरी है। कैमरा चलाने के लिए Microphone अनुमति जरूरी नहीं है।</p>
+ </div>
+ <div class="card">
+  <h2>Camera Controls</h2>
   <button class="secondary" onclick="stopAllCameras()">Stop All Cameras</button>
   <button class="danger" onclick="emergencyOff()">Emergency OFF</button>
-  <p>Camera और microphone का उपयोग तभी होगा जब आप अनुमति देंगे।</p>
+ </div>
+ <div class="card">
+  <h2>Floating Control Settings</h2>
+  <button onclick="requestOverlay()">Display Permission दें</button>
+  <button class="secondary" onclick="openAccessibility()">Accessibility ON करें</button>
+  <button onclick="startFloating()">Floating Control चालू करें</button>
+  <button class="danger" onclick="stopFloating()">Floating Control बंद करें</button>
+  <button class="secondary" onclick="checkFloatingStatus()">Check Floating Status</button>
+  <p id="floatingStatus">Floating Control की स्थिति जाँचें।</p>
  </div>
  <div class="card">
   <h2>About Gesture AI</h2>
   <p>Gesture AI version 2.0</p>
   <p>Android 9+ compatible project target.</p>
-  <p>यह ऐप बिना इंटरनेट के UI और सेव की गई सेटिंग चला सकता है। Recognition Engine के लिए अलग मॉडल और native integration आवश्यक है।</p>
+  <p>वास्तविक Hand/Face Recognition Engine अभी जोड़ना बाकी है।</p>
  </div>
 </section>
 
-</main>
 <footer>GESTURE AI • SMART CONTROL SYSTEM</footer>
 
 <script>
@@ -287,20 +253,67 @@ function showPage(id,btn){
  if(btn)btn.classList.add('active');
 }
 
+function hasAndroid(){
+ return !!window.Android;
+}
+
+function askCameraPermission(){
+ if(hasAndroid() && Android.requestCameraPermission){
+  Android.requestCameraPermission();
+  setTimeout(checkPermissions,1000);
+ }else{
+  alert('Android permission bridge उपलब्ध नहीं है।');
+ }
+}
+
+function askMicrophonePermission(){
+ if(hasAndroid() && Android.requestAudioPermission){
+  Android.requestAudioPermission();
+  setTimeout(checkPermissions,1000);
+ }else{
+  alert('Android permission bridge उपलब्ध नहीं है।');
+ }
+}
+
+function checkPermissions(){
+ let camera='जाँच उपलब्ध नहीं';
+ let audio='जाँच उपलब्ध नहीं';
+
+ if(hasAndroid()){
+  if(Android.isCameraAllowed)camera=Android.isCameraAllowed()?'ON':'OFF';
+  if(Android.isAudioAllowed)audio=Android.isAudioAllowed()?'ON':'OFF';
+ }
+
+ let message='Camera: '+camera+' | Microphone: '+audio;
+ document.getElementById('permissionStatus').innerText=message;
+ document.getElementById('settingsPermissionStatus').innerText=message;
+}
+
 async function startCamera(videoId,selectId){
  try{
+  if(hasAndroid() && Android.isCameraAllowed && !Android.isCameraAllowed()){
+   alert('पहले Camera Permission दें। अनुमति देने के बाद दोबारा Start Camera दबाएँ।');
+   askCameraPermission();
+   return;
+  }
+
   stopCamera(videoId);
+
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
    throw new Error('Camera API उपलब्ध नहीं है');
   }
+
   let facing=document.getElementById(selectId).value;
   let stream=await navigator.mediaDevices.getUserMedia({
-   video:{facingMode:{ideal:facing}},audio:false
+   video:{facingMode:{ideal:facing}},
+   audio:false
   });
+
   streams[videoId]=stream;
   let video=document.getElementById(videoId);
   video.srcObject=stream;
   await video.play();
+
   document.getElementById('cameraStatus').innerText='ON';
   document.getElementById(videoId==='handVideo'?'handMessage':'faceMessage').innerText='Camera चालू है।';
  }catch(e){
@@ -315,8 +328,9 @@ function stopCamera(videoId){
  }
  let video=document.getElementById(videoId);
  if(video)video.srcObject=null;
- document.getElementById('cameraStatus').innerText=
-  Object.keys(streams).length?'ON':'OFF';
+ document.getElementById('cameraStatus').innerText=Object.keys(streams).length?'ON':'OFF';
+ let message=document.getElementById(videoId==='handVideo'?'handMessage':'faceMessage');
+ if(message)message.innerText='Camera बंद है।';
 }
 
 function stopAllCameras(){
@@ -324,17 +338,8 @@ function stopAllCameras(){
  stopCamera('faceVideo');
 }
 
-function askPermission(){
- if(window.Android && Android.requestPermissions){
-  Android.requestPermissions();
-  document.getElementById('permissionStatus').innerText='Permission request भेजी गई।';
- }else{
-  document.getElementById('permissionStatus').innerText='Android permission bridge उपलब्ध नहीं है।';
- }
-}
-
 function loadApps(){
- if(!window.Android || !Android.getInstalledApps){
+ if(!hasAndroid() || !Android.getInstalledApps){
   alert('यह सुविधा Android APK में उपलब्ध होगी।');
   return;
  }
@@ -352,11 +357,17 @@ function filterApps(){
  let type=document.getElementById('appFilter').value;
  let list=document.getElementById('appList');
  list.innerHTML='';
+
  let filtered=installedApps.filter(a=>
   a.name.toLowerCase().includes(q) &&
   (type==='all'||(type==='system'&&a.system)||(type==='user'&&!a.system))
  );
- if(!filtered.length){list.innerHTML='<p>कोई ऐप नहीं मिला।</p>';return}
+
+ if(!filtered.length){
+  list.innerHTML='<p>कोई ऐप नहीं मिला।</p>';
+  return;
+ }
+
  filtered.forEach(a=>{
   let item=document.createElement('div');
   item.className='appitem';
@@ -374,10 +385,9 @@ function saveGesture(){
  let g=document.getElementById('gestureName').value;
  let a=document.getElementById('gestureAction').value;
  rules.push({g,a});
- let div=document.getElementById('gestureRules');
  let p=document.createElement('p');
- p.textContent=g+'  →  '+a;
- div.appendChild(p);
+ p.textContent=g+' → '+a;
+ document.getElementById('gestureRules').appendChild(p);
 }
 
 function toggleRadar(){
@@ -417,8 +427,7 @@ function applyColors(){
  let b=document.getElementById('c2').value;
  let c=document.getElementById('c3').value;
  let angle=document.getElementById('angle').value;
- document.getElementById('colorPreview').style.background=
-  `linear-gradient(${angle}deg,${a},${b},${c})`;
+ document.getElementById('colorPreview').style.background=`linear-gradient(${angle}deg,${a},${b},${c})`;
 }
 
 ['c1','c2','c3'].forEach(id=>
@@ -430,6 +439,7 @@ for(let i=0;i<30;i++){
  let h=i*12;
  colorPresets.push(`linear-gradient(${h*3}deg,hsl(${h},90%,55%),hsl(${(h+80)%360},85%,50%),hsl(${(h+170)%360},90%,55%))`);
 }
+
 colorPresets.forEach((g,i)=>{
  let d=document.createElement('div');
  d.className='swatch';
@@ -441,7 +451,8 @@ colorPresets.forEach((g,i)=>{
 
 for(let i=1;i<=50;i++){
  let o=document.createElement('option');
- o.value=i;o.textContent='Text Style '+i;
+ o.value=i;
+ o.textContent='Text Style '+i;
  document.getElementById('textStyle').appendChild(o);
 }
 
@@ -464,6 +475,37 @@ function applyText(){
  document.getElementById(id).addEventListener('input',applyText)
 );
 
+function requestOverlay(){
+ if(hasAndroid() && Android.requestOverlayPermission)Android.requestOverlayPermission();
+ else alert('Android bridge उपलब्ध नहीं है।');
+}
+
+function openAccessibility(){
+ if(hasAndroid() && Android.openAccessibilitySettings)Android.openAccessibilitySettings();
+ else alert('Android bridge उपलब्ध नहीं है।');
+}
+
+function startFloating(){
+ if(hasAndroid() && Android.startFloating)Android.startFloating();
+ else alert('Android bridge उपलब्ध नहीं है।');
+}
+
+function stopFloating(){
+ if(hasAndroid() && Android.stopFloating)Android.stopFloating();
+ else alert('Android bridge उपलब्ध नहीं है।');
+}
+
+function checkFloatingStatus(){
+ if(!hasAndroid()){
+  document.getElementById('floatingStatus').innerText='Android bridge उपलब्ध नहीं है।';
+  return;
+ }
+ let overlay=Android.isOverlayAllowed();
+ let accessibility=Android.isAccessibilityReady();
+ document.getElementById('floatingStatus').innerText=
+  'Overlay: '+(overlay?'ON':'OFF')+' | Accessibility: '+(accessibility?'ON':'OFF');
+}
+
 function emergencyOff(){
  stopAllCameras();
  if(radarOn)toggleRadar();
@@ -471,41 +513,7 @@ function emergencyOff(){
 }
 
 window.addEventListener('beforeunload',stopAllCameras);
-</script>
-
-<section id="floatingSettings" style="padding:20px;margin:15px;background:#17243d;border-radius:15px;color:white;">
-    <h2>⚙️ Floating Control Settings</h2>
-
-    <button onclick="Android.requestOverlayPermission()">
-        Display Permission दें
-    </button>
-
-    <button onclick="Android.openAccessibilitySettings()">
-        Accessibility ON करें
-    </button>
-
-    <button onclick="Android.startFloating()">
-        Floating Control चालू करें
-    </button>
-
-    <button onclick="Android.stopFloating()">
-        Floating Control बंद करें
-    </button>
-
-    <p id="floatingStatus">Floating Control सेटिंग</p>
-</section>
-
-<script>
-function checkFloatingStatus() {
-    if (!window.Android) return;
-
-    let overlay = Android.isOverlayAllowed();
-    let accessibility = Android.isAccessibilityReady();
-
-    document.getElementById("floatingStatus").innerText =
-        "Overlay: " + (overlay ? "ON" : "OFF") +
-        " | Accessibility: " + (accessibility ? "ON" : "OFF");
-}
+checkPermissions();
 </script>
 </body>
 </html>
