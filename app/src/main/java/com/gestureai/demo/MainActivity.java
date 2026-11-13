@@ -445,6 +445,80 @@ public class MainActivity extends Activity {
         }
     }
 
+  
+        @JavascriptInterface
+        public void startVoiceControl() {
+
+            runOnUiThread(() -> {
+
+                if (!hasAudioPermission()) {
+                    requestAudioPermission();
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Microphone permission dein, phir Voice ON dabayein",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    return;
+                }
+
+                try {
+                    Intent intent = new Intent(
+                            MainActivity.this,
+                            VoiceForegroundService.class
+                    );
+
+                    intent.setAction(
+                            VoiceForegroundService.ACTION_START
+                    );
+
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        startForegroundService(intent);
+                    } else {
+                        startService(intent);
+                    }
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Voice Control shuru ho raha hai",
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                } catch (Exception e) {
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Voice Control shuru nahi hua: " + e.getMessage(),
+                            Toast.LENGTH_LONG
+                    ).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopVoiceControl() {
+
+            runOnUiThread(() -> {
+
+                Intent intent = new Intent(
+                        MainActivity.this,
+                        VoiceForegroundService.class
+                );
+
+                intent.setAction(
+                        VoiceForegroundService.ACTION_STOP
+                );
+
+                startService(intent);
+
+                Toast.makeText(
+                        MainActivity.this,
+                        "Voice Control band kar diya",
+                        Toast.LENGTH_SHORT
+                ).show();
+            });
+        }
+    
     @Override
     public void onBackPressed() {
 
