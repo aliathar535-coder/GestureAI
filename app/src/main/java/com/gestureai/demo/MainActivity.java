@@ -18,7 +18,6 @@ import android.webkit.WebResourceRequest;
 import android.view.ViewGroup;
 import android.graphics.Color;
 import android.widget.Toast;
-import android.text.TextUtils;
 import android.content.ComponentName;
 
 import androidx.core.app.ActivityCompat;
@@ -37,7 +36,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private WebViewAssetLoader assetLoader;
 
-    private static final int PERMISSION_CODE = 7;
+    private static final int CAMERA_PERMISSION_CODE = 7;
+    private static final int AUDIO_PERMISSION_CODE = 8;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -73,24 +73,53 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(PermissionRequest request) {
+
                 runOnUiThread(() -> {
-                    boolean camera =
-                            ContextCompat.checkSelfPermission(
+
+                    boolean allowed = true;
+                    boolean needsCamera = false;
+                    boolean needsAudio = false;
+
+                    for (String resource : request.getResources()) {
+
+                        if (resource.equals(
+                                PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
+
+                            needsCamera = true;
+
+                            if (ContextCompat.checkSelfPermission(
                                     MainActivity.this,
                                     Manifest.permission.CAMERA
-                            ) == PackageManager.PERMISSION_GRANTED;
+                            ) != PackageManager.PERMISSION_GRANTED) {
+                                allowed = false;
+                            }
 
-                    boolean audio =
-                            ContextCompat.checkSelfPermission(
+                        } else if (resource.equals(
+                                PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+
+                            needsAudio = true;
+
+                            if (ContextCompat.checkSelfPermission(
                                     MainActivity.this,
                                     Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED;
+                            ) != PackageManager.PERMISSION_GRANTED) {
+                                allowed = false;
+                            }
+                        }
+                    }
 
-                    if (camera && audio) {
+                    if (allowed) {
                         request.grant(request.getResources());
                     } else {
                         request.deny();
-                        requestPermissionsNow();
+
+                        if (needsCamera && !hasCameraPermission()) {
+                            requestCameraPermission();
+                        }
+
+                        if (needsAudio && !hasAudioPermission()) {
+                            requestAudioPermission();
+                        }
                     }
                 });
             }
@@ -101,35 +130,53 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
-
-        requestPermissionsNow();
+        web.loadUrl(
+                "https://appassets.androidplatform.net/assets/index.html"
+        );
     }
 
-    private void requestPermissionsNow() {
-        boolean camera =
-                ContextCompat.checkSelfPermission(this,
-                        Manifest.permission.CAMERA)
-                        == PackageManager.PERMISSION_GRANTED;
+    private boolean hasCameraPermission() {
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
 
-        boolean audio =
-                ContextCompat.checkSelfPermission(this,
-                        Manifest.permission.RECORD_AUDIO)
-                        == PackageManager.PERMISSION_GRANTED;
+    private boolean hasAudioPermission() {
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
 
-        if (!camera || !audio) {
+    private void requestCameraPermission() {
+
+        if (!hasCameraPermission()) {
             ActivityCompat.requestPermissions(
                     this,
                     new String[]{
-                            Manifest.permission.CAMERA,
+                            Manifest.permission.CAMERA
+                    },
+                    CAMERA_PERMISSION_CODE
+            );
+        }
+    }
+
+    private void requestAudioPermission() {
+
+        if (!hasAudioPermission()) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{
                             Manifest.permission.RECORD_AUDIO
                     },
-                    PERMISSION_CODE
+                    AUDIO_PERMISSION_CODE
             );
         }
     }
 
     private boolean isAccessibilityEnabled() {
+
         int enabled = 0;
 
         try {
@@ -151,7 +198,8 @@ public class MainActivity extends Activity {
         if (services == null) return false;
 
         ComponentName component = new ComponentName(
-                this, GestureAccessibilityService.class
+                this,
+                GestureAccessibilityService.class
         );
 
         return services.contains(component.flattenToString());
@@ -161,6 +209,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getInstalledApps() {
+
             JSONArray array = new JSONArray();
 
             try {
@@ -181,9 +230,12 @@ public class MainActivity extends Activity {
                 });
 
                 for (ResolveInfo info : apps) {
+
                     JSONObject item = new JSONObject();
 
-                    String label = info.loadLabel(getPackageManager()).toString();
+                    String label =
+                            info.loadLabel(getPackageManager()).toString();
+
                     String packageName = info.activityInfo.packageName;
 
                     boolean system =
@@ -206,38 +258,82 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void launchApp(String packageName) {
+
             runOnUiThread(() -> {
+
                 try {
-                    if (packageName == null || packageName.trim().isEmpty()) {
-                        Toast.makeText(MainActivity.this,
+                    if (packageName == null ||
+                            packageName.trim().isEmpty()) {
+
+                        Toast.makeText(
+                                MainActivity.this,
                                 "App select nahi hua",
-                                Toast.LENGTH_SHORT).show();
+                                Toast.LENGTH_SHORT
+                        ).show();
+
                         return;
                     }
 
                     Intent launchIntent =
-                            getPackageManager().getLaunchIntentForPackage(packageName);
+                            getPackageManager().getLaunchIntentForPackage(
+                                    packageName
+                            );
 
                     if (launchIntent != null) {
-                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                        launchIntent.addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK
+                        );
+
                         startActivity(launchIntent);
+
                     } else {
-                        Toast.makeText(MainActivity.this,
+
+                        Toast.makeText(
+                                MainActivity.this,
                                 "Is app ko open nahi kar sakte",
-                                Toast.LENGTH_SHORT).show();
+                                Toast.LENGTH_SHORT
+                        ).show();
                     }
 
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this,
+
+                    Toast.makeText(
+                            MainActivity.this,
                             "App open nahi hua",
-                            Toast.LENGTH_SHORT).show();
+                            Toast.LENGTH_SHORT
+                    ).show();
                 }
             });
         }
 
         @JavascriptInterface
         public void requestPermissions() {
-            runOnUiThread(() -> requestPermissionsNow());
+            runOnUiThread(() -> requestCameraPermission());
+        }
+
+        @JavascriptInterface
+        public void requestCameraPermission() {
+            runOnUiThread(() ->
+                    MainActivity.this.requestCameraPermission()
+            );
+        }
+
+        @JavascriptInterface
+        public void requestAudioPermission() {
+            runOnUiThread(() ->
+                    MainActivity.this.requestAudioPermission()
+            );
+        }
+
+        @JavascriptInterface
+        public boolean isCameraAllowed() {
+            return hasCameraPermission();
+        }
+
+        @JavascriptInterface
+        public boolean isAudioAllowed() {
+            return hasAudioPermission();
         }
 
         @JavascriptInterface
@@ -247,12 +343,16 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void requestOverlayPermission() {
+
             runOnUiThread(() -> {
+
                 if (!Settings.canDrawOverlays(MainActivity.this)) {
+
                     Intent intent = new Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:" + getPackageName())
                     );
+
                     startActivity(intent);
                 }
             });
@@ -260,7 +360,9 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void openAccessibilitySettings() {
+
             runOnUiThread(() -> {
+
                 startActivity(new Intent(
                         Settings.ACTION_ACCESSIBILITY_SETTINGS
                 ));
@@ -274,18 +376,28 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void startFloating() {
+
             runOnUiThread(() -> {
+
                 if (!Settings.canDrawOverlays(MainActivity.this)) {
-                    Toast.makeText(MainActivity.this,
+
+                    Toast.makeText(
+                            MainActivity.this,
                             "Pehle Display over other apps permission dein",
-                            Toast.LENGTH_LONG).show();
+                            Toast.LENGTH_LONG
+                    ).show();
+
                     return;
                 }
 
                 if (!isAccessibilityEnabled()) {
-                    Toast.makeText(MainActivity.this,
+
+                    Toast.makeText(
+                            MainActivity.this,
                             "Pehle Gesture AI Accessibility ON karein",
-                            Toast.LENGTH_LONG).show();
+                            Toast.LENGTH_LONG
+                    ).show();
+
                     return;
                 }
 
@@ -294,37 +406,48 @@ public class MainActivity extends Activity {
                             MainActivity.this,
                             FloatingOverlayService.class
                     );
+
                     startService(intent);
 
-                    Toast.makeText(MainActivity.this,
+                    Toast.makeText(
+                            MainActivity.this,
                             "Floating Control shuru ho gaya",
-                            Toast.LENGTH_SHORT).show();
+                            Toast.LENGTH_SHORT
+                    ).show();
 
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this,
+
+                    Toast.makeText(
+                            MainActivity.this,
                             "Floating Control shuru nahi hua",
-                            Toast.LENGTH_SHORT).show();
+                            Toast.LENGTH_SHORT
+                    ).show();
                 }
             });
         }
 
         @JavascriptInterface
         public void stopFloating() {
+
             runOnUiThread(() -> {
+
                 stopService(new Intent(
                         MainActivity.this,
                         FloatingOverlayService.class
                 ));
 
-                Toast.makeText(MainActivity.this,
+                Toast.makeText(
+                        MainActivity.this,
                         "Floating Control band ho gaya",
-                        Toast.LENGTH_SHORT).show();
+                        Toast.LENGTH_SHORT
+                ).show();
             });
         }
     }
 
     @Override
     public void onBackPressed() {
+
         if (web != null && web.canGoBack()) {
             web.goBack();
         } else {
@@ -334,11 +457,13 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+
         if (web != null) {
             web.removeJavascriptInterface("Android");
             web.destroy();
             web = null;
         }
+
         super.onDestroy();
     }
-}
+                             }
