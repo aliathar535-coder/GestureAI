@@ -7,16 +7,19 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.provider.Settings;
+import android.net.Uri;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
 import android.webkit.PermissionRequest;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
-import android.net.Uri;
 import android.view.ViewGroup;
 import android.graphics.Color;
 import android.widget.Toast;
+import android.text.TextUtils;
+import android.content.ComponentName;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -57,7 +60,6 @@ public class MainActivity extends Activity {
         web.getSettings().setAllowContentAccess(true);
 
         web.setBackgroundColor(Color.rgb(10, 15, 30));
-
         web.addJavascriptInterface(new AppBridge(), "Android");
 
         web.setWebViewClient(new WebViewClient() {
@@ -86,14 +88,6 @@ public class MainActivity extends Activity {
 
                     if (camera && audio) {
                         request.grant(request.getResources());
-                    } else if (camera) {
-                        for (String resource : request.getResources()) {
-                            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
-                                request.grant(new String[]{resource});
-                                return;
-                            }
-                        }
-                        request.deny();
                     } else {
                         request.deny();
                         requestPermissionsNow();
@@ -133,6 +127,34 @@ public class MainActivity extends Activity {
                     PERMISSION_CODE
             );
         }
+    }
+
+    private boolean isAccessibilityEnabled() {
+        int enabled = 0;
+
+        try {
+            enabled = Settings.Secure.getInt(
+                    getContentResolver(),
+                    Settings.Secure.ACCESSIBILITY_ENABLED
+            );
+        } catch (Exception e) {
+            return false;
+        }
+
+        if (enabled != 1) return false;
+
+        String services = Settings.Secure.getString(
+                getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        );
+
+        if (services == null) return false;
+
+        ComponentName component = new ComponentName(
+                this, GestureAccessibilityService.class
+        );
+
+        return services.contains(component.flattenToString());
     }
 
     public class AppBridge {
@@ -216,6 +238,88 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void requestPermissions() {
             runOnUiThread(() -> requestPermissionsNow());
+        }
+
+        @JavascriptInterface
+        public boolean isOverlayAllowed() {
+            return Settings.canDrawOverlays(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void requestOverlayPermission() {
+            runOnUiThread(() -> {
+                if (!Settings.canDrawOverlays(MainActivity.this)) {
+                    Intent intent = new Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName())
+                    );
+                    startActivity(intent);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openAccessibilitySettings() {
+            runOnUiThread(() -> {
+                startActivity(new Intent(
+                        Settings.ACTION_ACCESSIBILITY_SETTINGS
+                ));
+            });
+        }
+
+        @JavascriptInterface
+        public boolean isAccessibilityReady() {
+            return isAccessibilityEnabled();
+        }
+
+        @JavascriptInterface
+        public void startFloating() {
+            runOnUiThread(() -> {
+                if (!Settings.canDrawOverlays(MainActivity.this)) {
+                    Toast.makeText(MainActivity.this,
+                            "Pehle Display over other apps permission dein",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                if (!isAccessibilityEnabled()) {
+                    Toast.makeText(MainActivity.this,
+                            "Pehle Gesture AI Accessibility ON karein",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                try {
+                    Intent intent = new Intent(
+                            MainActivity.this,
+                            FloatingOverlayService.class
+                    );
+                    startService(intent);
+
+                    Toast.makeText(MainActivity.this,
+                            "Floating Control shuru ho gaya",
+                            Toast.LENGTH_SHORT).show();
+
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this,
+                            "Floating Control shuru nahi hua",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopFloating() {
+            runOnUiThread(() -> {
+                stopService(new Intent(
+                        MainActivity.this,
+                        FloatingOverlayService.class
+                ));
+
+                Toast.makeText(MainActivity.this,
+                        "Floating Control band ho gaya",
+                        Toast.LENGTH_SHORT).show();
+            });
         }
     }
 
