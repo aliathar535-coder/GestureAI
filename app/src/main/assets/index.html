@@ -472,5 +472,40 @@ function emergencyOff(){
 
 window.addEventListener('beforeunload',stopAllCameras);
 </script>
+
+<section id="floatingSettings" style="padding:20px;margin:15px;background:#17243d;border-radius:15px;color:white;">
+    <h2>⚙️ Floating Control Settings</h2>
+
+    <button onclick="Android.requestOverlayPermission()">
+        Display Permission दें
+    </button>
+
+    <button onclick="Android.openAccessibilitySettings()">
+        Accessibility ON करें
+    </button>
+
+    <button onclick="Android.startFloating()">
+        Floating Control चालू करें
+    </button>
+
+    <button onclick="Android.stopFloating()">
+        Floating Control बंद करें
+    </button>
+
+    <p id="floatingStatus">Floating Control सेटिंग</p>
+</section>
+
+<script>
+function checkFloatingStatus() {
+    if (!window.Android) return;
+
+    let overlay = Android.isOverlayAllowed();
+    let accessibility = Android.isAccessibilityReady();
+
+    document.getElementById("floatingStatus").innerText =
+        "Overlay: " + (overlay ? "ON" : "OFF") +
+        " | Accessibility: " + (accessibility ? "ON" : "OFF");
+}
+</script>
 </body>
 </html>
