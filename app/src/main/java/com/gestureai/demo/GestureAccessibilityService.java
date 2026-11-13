@@ -27,16 +27,18 @@ public class GestureAccessibilityService extends AccessibilityService {
     }
 
     @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
+public void onAccessibilityEvent(AccessibilityEvent event) {
 
-        if (event == null) return;
+    if (event == null) return;
 
-        CharSequence packageName = event.getPackageName();
+    CharSequence packageName = event.getPackageName();
 
-        if (packageName != null) {
-            foregroundPackage = packageName.toString();
-        }
+    if (packageName != null &&
+            !getPackageName().contentEquals(packageName)) {
+
+        foregroundPackage = packageName.toString();
     }
+}
 
     public static void tap(float x, float y) {
 
