@@ -260,7 +260,7 @@ public class FloatingOverlayService extends Service {
                 addItem(name);
                 showManager();
             }),
-            action("Voice", this::startVoice),
+            action("Voice", this::startContinuousVoice),
             action("Close", this::closePanel)
         );
 
@@ -539,6 +539,44 @@ private void showSimplePanel() {
         GestureAccessibilityService.tap(x, y);
     }
 
+    
+private void startContinuousVoice() {
+
+    if (checkSelfPermission(
+            android.Manifest.permission.RECORD_AUDIO
+    ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+
+        android.widget.Toast.makeText(
+                this,
+                "Pehle Microphone permission dijiye",
+                android.widget.Toast.LENGTH_LONG
+        ).show();
+
+        return;
+    }
+
+    try {
+        Intent intent = new Intent(
+                this,
+                VoiceForegroundService.class
+        );
+
+        intent.setAction(
+                VoiceForegroundService.ACTION_START
+        );
+
+        startForegroundService(intent);
+
+    } catch (Exception e) {
+
+        android.widget.Toast.makeText(
+                this,
+                "Voice start nahi ho paya. Gesture AI ko pehle kholiye.",
+                android.widget.Toast.LENGTH_LONG
+        ).show();
+    }
+}
+    
     private void startVoice() {
         if (voiceHelper != null) {
             voiceHelper.stop();
@@ -645,8 +683,20 @@ private void showSimplePanel() {
                 spoken.contains(english[number]);
     }
 
+    
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+
+        if (intent != null &&
+                "com.gestureai.demo.VOICE_COMMAND".equals(intent.getAction())) {
+
+            String command = intent.getStringExtra("voice_command");
+
+            if (command != null && !command.trim().isEmpty()) {
+                handleVoiceCommand(command);
+            }
+        }
+
         return START_STICKY;
     }
 
@@ -686,4 +736,5 @@ private void showSimplePanel() {
     public IBinder onBind(Intent intent) {
         return null;
     }
-            }
+}
+
