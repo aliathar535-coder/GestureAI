@@ -4,12 +4,13 @@ package com.gestureai.demo;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.graphics.Path;
-import android.os.Build;
 import android.view.accessibility.AccessibilityEvent;
 
 public class GestureAccessibilityService extends AccessibilityService {
 
     private static GestureAccessibilityService instance;
+
+    private static volatile String foregroundPackage = "";
 
     @Override
     protected void onServiceConnected() {
@@ -21,25 +22,45 @@ public class GestureAccessibilityService extends AccessibilityService {
         return instance != null;
     }
 
+    public static String getForegroundPackage() {
+        return foregroundPackage;
+    }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+
+        if (event == null) return;
+
+        CharSequence packageName = event.getPackageName();
+
+        if (packageName != null) {
+            foregroundPackage = packageName.toString();
+        }
+    }
+
     public static void tap(float x, float y) {
+
         if (instance == null) return;
 
         Path path = new Path();
         path.moveTo(x, y);
 
-        GestureDescription.StrokeDescription stroke =
-                new GestureDescription.StrokeDescription(
-                        path, 0, 100
-                );
-
         GestureDescription.Builder builder =
                 new GestureDescription.Builder();
 
-        builder.addStroke(stroke);
-        instance.dispatchGesture(builder.build(), null, null);
+        builder.addStroke(
+                new GestureDescription.StrokeDescription(
+                        path, 0, 100
+                )
+        );
+
+        instance.dispatchGesture(
+                builder.build(), null, null
+        );
     }
 
     public static void longPress(float x, float y) {
+
         if (instance == null) return;
 
         Path path = new Path();
@@ -54,10 +75,13 @@ public class GestureAccessibilityService extends AccessibilityService {
                 )
         );
 
-        instance.dispatchGesture(builder.build(), null, null);
+        instance.dispatchGesture(
+                builder.build(), null, null
+        );
     }
 
     public static void doubleTap(float x, float y) {
+
         if (instance == null) return;
 
         Path path = new Path();
@@ -78,14 +102,19 @@ public class GestureAccessibilityService extends AccessibilityService {
                 )
         );
 
-        instance.dispatchGesture(builder.build(), null, null);
+        instance.dispatchGesture(
+                builder.build(), null, null
+        );
     }
 
     public static void swipe(
-            float startX, float startY,
-            float endX, float endY,
+            float startX,
+            float startY,
+            float endX,
+            float endY,
             long duration
     ) {
+
         if (instance == null) return;
 
         Path path = new Path();
@@ -101,12 +130,9 @@ public class GestureAccessibilityService extends AccessibilityService {
                 )
         );
 
-        instance.dispatchGesture(builder.build(), null, null);
-    }
-
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
-        // फिलहाल किसी स्क्रीन की जानकारी पढ़ने की जरूरत नहीं है।
+        instance.dispatchGesture(
+                builder.build(), null, null
+        );
     }
 
     @Override
@@ -115,7 +141,11 @@ public class GestureAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
-        instance = null;
+        if (instance == this) {
+            instance = null;
+            foregroundPackage = "";
+        }
+
         super.onDestroy();
     }
 }
