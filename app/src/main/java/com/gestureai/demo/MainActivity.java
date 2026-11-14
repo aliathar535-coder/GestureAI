@@ -1,4 +1,3 @@
-
 package com.gestureai.demo;
 
 import android.Manifest;
@@ -372,7 +371,6 @@ public class MainActivity extends AppCompatActivity {
             if (!granted) {
                 showToast("Permission नहीं मिली");
             }
-
         } else if (requestCode == REQUEST_NOTIFICATION) {
 
             // Notification permission is optional for opening the app.
@@ -387,7 +385,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.LENGTH_SHORT
         ).show();
     }
-
+    
     public class AppBridge {
 
         private final Context context;
@@ -397,7 +395,7 @@ public class MainActivity extends AppCompatActivity {
             this.context = context.getApplicationContext();
             this.commandStore = new CustomVoiceCommandStore(context);
         }
-        
+
         @JavascriptInterface
         public boolean isCameraAllowed() {
             return hasCameraPermission();
@@ -449,7 +447,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getCustomVoiceCommands() {
-            return commandStore.getCommandsJson();
+            return commandStore.getCommandsJson().toString();
         }
 
         @JavascriptInterface
