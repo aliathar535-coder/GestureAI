@@ -257,6 +257,29 @@ public class MainActivity extends Activity {
     public class AppBridge {
 
         @JavascriptInterface
+        public void openHandGesture() {
+
+            runOnUiThread(() -> {
+
+                try {
+                    Intent intent = new Intent(
+                            MainActivity.this,
+                            HandGestureActivity.class
+                    );
+
+                    startActivity(intent);
+
+                } catch (Exception e) {
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Hand Gesture screen nahi khul saki",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
         public String getInstalledApps() {
 
             JSONArray array = new JSONArray();
@@ -570,4 +593,4 @@ public class MainActivity extends Activity {
 
         super.onDestroy();
     }
-                             }
+}
