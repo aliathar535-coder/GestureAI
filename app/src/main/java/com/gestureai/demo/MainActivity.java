@@ -475,20 +475,14 @@ public class MainActivity extends Activity {
 
             runOnUiThread(() -> {
 
-                Intent intent = new Intent(
+                stopService(new Intent(
                         MainActivity.this,
                         VoiceForegroundService.class
-                );
-
-                intent.setAction(
-                        VoiceForegroundService.ACTION_STOP
-                );
-
-                startService(intent);
+                ));
 
                 Toast.makeText(
                         MainActivity.this,
-                        "Voice Control band karne ka request bheja",
+                        "Voice Control band ho gaya",
                         Toast.LENGTH_SHORT
                 ).show();
             });
@@ -515,5 +509,4 @@ public class MainActivity extends Activity {
 
         super.onDestroy();
     }
-        }
-    
+                }
