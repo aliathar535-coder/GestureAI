@@ -5,6 +5,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
@@ -396,7 +397,7 @@ public class MainActivity extends AppCompatActivity {
             this.context = context.getApplicationContext();
             this.commandStore = new CustomVoiceCommandStore(context);
         }
-
+        
         @JavascriptInterface
         public boolean isCameraAllowed() {
             return hasCameraPermission();
@@ -409,9 +410,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void requestCameraPermission() {
-
             runOnUiThread(() -> {
-
                 if (!hasCameraPermission()) {
                     MainActivity.this.requestPermissions(
                             new String[]{Manifest.permission.CAMERA},
@@ -425,9 +424,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void requestAudioPermission() {
-
             runOnUiThread(() -> {
-
                 if (!hasAudioPermission()) {
                     MainActivity.this.requestPermissions(
                             new String[]{Manifest.permission.RECORD_AUDIO},
@@ -441,14 +438,11 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void openHandGesture() {
-
             runOnUiThread(() -> {
-
                 Intent intent = new Intent(
                         MainActivity.this,
                         HandGestureActivity.class
                 );
-
                 startActivity(intent);
             });
         }
@@ -463,7 +457,6 @@ public class MainActivity extends AppCompatActivity {
                 String phrase,
                 String action
         ) {
-
             if (phrase == null || action == null
                     || phrase.trim().isEmpty()
                     || action.trim().isEmpty()) {
@@ -478,7 +471,6 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public boolean removeCustomVoiceCommand(String phrase) {
-
             if (phrase == null || phrase.trim().isEmpty()) {
                 return false;
             }
@@ -488,59 +480,55 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getInstalledApps() {
-
             JSONArray apps = new JSONArray();
 
             try {
-
                 Intent intent = new Intent(Intent.ACTION_MAIN);
                 intent.addCategory(Intent.CATEGORY_LAUNCHER);
 
                 PackageManager pm = getPackageManager();
-
                 List<ResolveInfo> results =
                         pm.queryIntentActivities(intent, 0);
 
                 for (ResolveInfo info : results) {
-
                     if (info.activityInfo == null) {
                         continue;
                     }
 
                     JSONObject item = new JSONObject();
 
-                    item.put(
-                            "name",
-                            info.loadLabel(pm).toString()
-                    );
+                    String packageName =
+                            info.activityInfo.packageName;
 
-                    item.put(
-                            "packageName",
-                            info.activityInfo.packageName
-                    );
+                    item.put("name", info.loadLabel(pm).toString());
+                    item.put("package", packageName);
+                    item.put("packageName", packageName);
 
+                    int flags =
+                            info.activityInfo.applicationInfo.flags;
+
+                    boolean systemApp =
+                            (flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                            || (flags & android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
+
+                    item.put("system", systemApp);
                     apps.put(item);
                 }
-
             } catch (Exception e) {
                 return "[]";
             }
 
             return apps.toString();
-            }
-        
+        }
+
         @JavascriptInterface
         public void openAccessibilitySettings() {
-
             runOnUiThread(() -> {
-
                 try {
                     Intent intent = new Intent(
                             Settings.ACTION_ACCESSIBILITY_SETTINGS
                     );
-
                     startActivity(intent);
-
                 } catch (Exception e) {
                     showToast("Accessibility Settings नहीं खुलीं");
                 }
@@ -549,9 +537,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public boolean isAccessibilityEnabled() {
-
             try {
-
                 String enabledServices = Settings.Secure.getString(
                         getContentResolver(),
                         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -561,7 +547,6 @@ public class MainActivity extends AppCompatActivity {
                         && enabledServices.toLowerCase().contains(
                                 getPackageName().toLowerCase()
                         );
-
             } catch (Exception e) {
                 return false;
             }
@@ -569,21 +554,17 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void startVoiceControl() {
-
             runOnUiThread(() -> {
-
                 if (!hasAudioPermission()) {
                     MainActivity.this.requestPermissions(
                             new String[]{Manifest.permission.RECORD_AUDIO},
                             REQUEST_AUDIO
                     );
-
                     showToast("पहले Microphone Permission दें");
                     return;
                 }
 
                 try {
-
                     Intent intent = new Intent(
                             MainActivity.this,
                             VoiceForegroundService.class
@@ -596,7 +577,6 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     showToast("Voice Control शुरू करने का अनुरोध भेज दिया");
-
                 } catch (Exception e) {
                     showToast("Voice Control शुरू नहीं हो पाया");
                 }
@@ -605,20 +585,15 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void stopVoiceControl() {
-
             runOnUiThread(() -> {
-
                 try {
-
                     Intent intent = new Intent(
                             MainActivity.this,
                             VoiceForegroundService.class
                     );
 
                     stopService(intent);
-
-                    showToast("Voice Control बंद कर दिया");
-
+                    showToast("Voice Control बंद करने का अनुरोध भेज दिया");
                 } catch (Exception e) {
                     showToast("Voice Control बंद नहीं हो पाया");
                 }
@@ -627,28 +602,22 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void startFloating() {
-
             runOnUiThread(() -> {
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                         && !Settings.canDrawOverlays(MainActivity.this)) {
-
                     showToast("पहले Floating Window Permission दें");
                     openOverlayPermissionSettings();
                     return;
                 }
 
                 try {
-
                     Intent intent = new Intent(
                             MainActivity.this,
                             FloatingOverlayService.class
                     );
 
                     startService(intent);
-
                     showToast("Floating Controls शुरू करने का अनुरोध भेज दिया");
-
                 } catch (Exception e) {
                     showToast("Floating Controls शुरू नहीं हो पाए");
                 }
@@ -657,18 +626,14 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void stopFloating() {
-
             runOnUiThread(() -> {
-
                 try {
-
                     Intent intent = new Intent(
                             MainActivity.this,
                             FloatingOverlayService.class
                     );
 
                     stopService(intent);
-
                 } catch (Exception e) {
                     showToast("Floating Controls बंद नहीं हो पाए");
                 }
@@ -677,14 +642,10 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void requestOverlayPermission() {
-
             runOnUiThread(() -> {
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                         && !Settings.canDrawOverlays(MainActivity.this)) {
-
                     openOverlayPermissionSettings();
-
                 } else {
                     showToast("Floating Window Permission पहले से मिली हुई है");
                 }
@@ -692,16 +653,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void openOverlayPermissionSettings() {
-
             try {
-
                 Intent intent = new Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName())
                 );
-
                 startActivity(intent);
-
             } catch (Exception e) {
                 showToast("Overlay Settings नहीं खुलीं");
             }
@@ -709,15 +666,12 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void openApp(String packageName) {
-
             if (packageName == null || packageName.trim().isEmpty()) {
                 return;
             }
 
             runOnUiThread(() -> {
-
                 try {
-
                     Intent intent = getPackageManager()
                             .getLaunchIntentForPackage(packageName.trim());
 
@@ -726,22 +680,23 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         showToast("यह App नहीं खुल पाया");
                     }
-
                 } catch (Exception e) {
                     showToast("App खोलने में समस्या हुई");
                 }
             });
         }
 
+        // HTML में Android.launchApp() भी इसी method को call करेगा।
+        @JavascriptInterface
+        public void launchApp(String packageName) {
+            openApp(packageName);
+        }
+
         @JavascriptInterface
         public void openSystemSettings() {
-
             runOnUiThread(() -> {
-
                 try {
-                    startActivity(
-                            new Intent(Settings.ACTION_SETTINGS)
-                    );
+                    startActivity(new Intent(Settings.ACTION_SETTINGS));
                 } catch (Exception e) {
                     showToast("Settings नहीं खुलीं");
                 }
@@ -761,7 +716,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
-
         if (webView != null) {
             webView.onPause();
             webView.pauseTimers();
@@ -772,24 +726,21 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-
         if (pendingWebPermission != null) {
             pendingWebPermission.deny();
             pendingWebPermission = null;
         }
 
         if (webView != null) {
-
             webView.removeJavascriptInterface("Android");
             webView.stopLoading();
             webView.loadUrl("about:blank");
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
             webView.destroy();
-
             webView = null;
         }
 
         super.onDestroy();
     }
-    }
+                }
