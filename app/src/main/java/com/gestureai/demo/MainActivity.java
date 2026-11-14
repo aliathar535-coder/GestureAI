@@ -87,10 +87,7 @@ public class MainActivity extends Activity {
 
                             needsCamera = true;
 
-                            if (ContextCompat.checkSelfPermission(
-                                    MainActivity.this,
-                                    Manifest.permission.CAMERA
-                            ) != PackageManager.PERMISSION_GRANTED) {
+                            if (!hasCameraPermission()) {
                                 allowed = false;
                             }
 
@@ -99,10 +96,7 @@ public class MainActivity extends Activity {
 
                             needsAudio = true;
 
-                            if (ContextCompat.checkSelfPermission(
-                                    MainActivity.this,
-                                    Manifest.permission.RECORD_AUDIO
-                            ) != PackageManager.PERMISSION_GRANTED) {
+                            if (!hasAudioPermission()) {
                                 allowed = false;
                             }
                         }
@@ -150,26 +144,20 @@ public class MainActivity extends Activity {
     }
 
     private void requestCameraPermission() {
-
         if (!hasCameraPermission()) {
             ActivityCompat.requestPermissions(
                     this,
-                    new String[]{
-                            Manifest.permission.CAMERA
-                    },
+                    new String[]{Manifest.permission.CAMERA},
                     CAMERA_PERMISSION_CODE
             );
         }
     }
 
     private void requestAudioPermission() {
-
         if (!hasAudioPermission()) {
             ActivityCompat.requestPermissions(
                     this,
-                    new String[]{
-                            Manifest.permission.RECORD_AUDIO
-                    },
+                    new String[]{Manifest.permission.RECORD_AUDIO},
                     AUDIO_PERMISSION_CODE
             );
         }
@@ -177,7 +165,7 @@ public class MainActivity extends Activity {
 
     private boolean isAccessibilityEnabled() {
 
-        int enabled = 0;
+        int enabled;
 
         try {
             enabled = Settings.Secure.getInt(
@@ -280,15 +268,11 @@ public class MainActivity extends Activity {
                             );
 
                     if (launchIntent != null) {
-
                         launchIntent.addFlags(
                                 Intent.FLAG_ACTIVITY_NEW_TASK
                         );
-
                         startActivity(launchIntent);
-
                     } else {
-
                         Toast.makeText(
                                 MainActivity.this,
                                 "Is app ko open nahi kar sakte",
@@ -297,7 +281,6 @@ public class MainActivity extends Activity {
                     }
 
                 } catch (Exception e) {
-
                     Toast.makeText(
                             MainActivity.this,
                             "App open nahi hua",
@@ -362,7 +345,6 @@ public class MainActivity extends Activity {
         public void openAccessibilitySettings() {
 
             runOnUiThread(() -> {
-
                 startActivity(new Intent(
                         Settings.ACTION_ACCESSIBILITY_SETTINGS
                 ));
@@ -380,24 +362,20 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
 
                 if (!Settings.canDrawOverlays(MainActivity.this)) {
-
                     Toast.makeText(
                             MainActivity.this,
                             "Pehle Display over other apps permission dein",
                             Toast.LENGTH_LONG
                     ).show();
-
                     return;
                 }
 
                 if (!isAccessibilityEnabled()) {
-
                     Toast.makeText(
                             MainActivity.this,
                             "Pehle Gesture AI Accessibility ON karein",
                             Toast.LENGTH_LONG
                     ).show();
-
                     return;
                 }
 
@@ -416,7 +394,6 @@ public class MainActivity extends Activity {
                     ).show();
 
                 } catch (Exception e) {
-
                     Toast.makeText(
                             MainActivity.this,
                             "Floating Control shuru nahi hua",
@@ -443,9 +420,7 @@ public class MainActivity extends Activity {
                 ).show();
             });
         }
-    }
 
-  
         @JavascriptInterface
         public void startVoiceControl() {
 
@@ -513,15 +488,15 @@ public class MainActivity extends Activity {
 
                 Toast.makeText(
                         MainActivity.this,
-                        "Voice Control band kar diya",
+                        "Voice Control band karne ka request bheja",
                         Toast.LENGTH_SHORT
                 ).show();
             });
         }
-    
+    }
+
     @Override
     public void onBackPressed() {
-
         if (web != null && web.canGoBack()) {
             web.goBack();
         } else {
@@ -540,4 +515,5 @@ public class MainActivity extends Activity {
 
         super.onDestroy();
     }
-                             }
+        }
+    
