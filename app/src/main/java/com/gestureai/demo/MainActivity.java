@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private WebViewAssetLoader assetLoader;
+    private CustomVoiceCommandStore customVoiceStore;
 
     private static final int CAMERA_PERMISSION_CODE = 7;
     private static final int AUDIO_PERMISSION_CODE = 8;
@@ -74,6 +75,8 @@ public class MainActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        customVoiceStore = new CustomVoiceCommandStore(this);
 
         getWindow().setStatusBarColor(Color.rgb(10, 15, 30));
         getWindow().setNavigationBarColor(Color.rgb(10, 15, 30));
@@ -255,6 +258,26 @@ public class MainActivity extends Activity {
     }
 
     public class AppBridge {
+
+        // CUSTOM VOICE COMMANDS
+
+        @JavascriptInterface
+        public String getCustomVoiceCommands() {
+            return customVoiceStore.getCommandsJson();
+        }
+
+        @JavascriptInterface
+        public boolean saveCustomVoiceCommand(
+                String phrase,
+                String action
+        ) {
+            return customVoiceStore.saveCommand(phrase, action);
+        }
+
+        @JavascriptInterface
+        public boolean removeCustomVoiceCommand(String phrase) {
+            return customVoiceStore.removeCommand(phrase);
+        }
 
         @JavascriptInterface
         public void openHandGesture() {
@@ -593,4 +616,5 @@ public class MainActivity extends Activity {
 
         super.onDestroy();
     }
-}
+        }
+            
