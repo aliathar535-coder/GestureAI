@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 public class HandCameraController {
 
     public interface Listener {
+        void onCameraReady();
         void onLearningProgress(int count);
         void onGestureRecognized(String name, String action);
         void onError(String message);
@@ -38,6 +39,7 @@ public class HandCameraController {
 
     private final HandGestureEngine engine;
     private final ExecutorService cameraExecutor;
+
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
@@ -106,7 +108,9 @@ public class HandCameraController {
                     starting = false;
                     running = false;
 
-                    sendError("Hand recognition model initialize nahi hua");
+                    sendError(
+                            "Hand recognition model initialize nahi hua"
+                    );
                 });
             }
         });
@@ -133,7 +137,14 @@ public class HandCameraController {
 
                 try {
 
-                    cameraProvider = future.get();
+                    ProcessCameraProvider provider = future.get();
+
+                    if (closed || currentGeneration != generation) {
+                        starting = false;
+                        return;
+                    }
+
+                    cameraProvider = provider;
 
                     Preview preview = new Preview.Builder()
                             .build();
@@ -157,9 +168,9 @@ public class HandCameraController {
                             this::analyzeFrame
                     );
 
-                    cameraProvider.unbindAll();
+                    provider.unbindAll();
 
-                    cameraProvider.bindToLifecycle(
+                    provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_FRONT_CAMERA,
                             preview,
@@ -167,8 +178,9 @@ public class HandCameraController {
                     );
 
                     if (closed || currentGeneration != generation) {
-                        cameraProvider.unbindAll();
+                        provider.unbindAll();
                         starting = false;
+                        running = false;
                         return;
                     }
 
@@ -177,6 +189,16 @@ public class HandCameraController {
 
                     lastGesture = "";
                     lastGestureTime = 0;
+
+                    mainHandler.post(() -> {
+
+                        if (!closed
+                                && currentGeneration == generation
+                                && listener != null) {
+
+                            listener.onCameraReady();
+                        }
+                    });
 
                 } catch (Exception e) {
 
@@ -202,7 +224,9 @@ public class HandCameraController {
 
     private void analyzeFrame(ImageProxy image) {
 
-        if (image == null) return;
+        if (image == null) {
+            return;
+        }
 
         Bitmap bitmap = null;
         Bitmap rotatedBitmap = null;
@@ -284,6 +308,7 @@ public class HandCameraController {
                         mainHandler.post(() -> {
 
                             if (!closed && listener != null) {
+
                                 listener.onGestureRecognized(
                                         name,
                                         action
@@ -303,6 +328,7 @@ public class HandCameraController {
             if (rotatedBitmap != null
                     && rotatedBitmap != bitmap
                     && !rotatedBitmap.isRecycled()) {
+
                 rotatedBitmap.recycle();
             }
 
@@ -342,7 +368,9 @@ public class HandCameraController {
 
     public synchronized boolean removeGesture(String name) {
 
-        if (closed) return false;
+        if (closed) {
+            return false;
+        }
 
         return engine.removeGesture(name);
     }
@@ -388,7 +416,9 @@ public class HandCameraController {
 
     public synchronized void shutdown() {
 
-        if (closed) return;
+        if (closed) {
+            return;
+        }
 
         closed = true;
 
@@ -428,4 +458,4 @@ public class HandCameraController {
             }
         });
     }
-}
+                }
