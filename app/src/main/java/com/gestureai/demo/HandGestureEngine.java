@@ -18,13 +18,14 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 public class HandGestureEngine {
 
     private static final String PREFS = "gesture_ai_data";
     private static final String DATA_KEY = "saved_hand_gestures";
+
     private static final int REQUIRED_SAMPLES = 5;
+
     private static final float MATCH_THRESHOLD = 0.12f;
 
     private final Context context;
@@ -39,6 +40,7 @@ public class HandGestureEngine {
             new ArrayList<>();
 
     public HandGestureEngine(Context context) {
+
         this.context = context.getApplicationContext();
 
         preferences = this.context.getSharedPreferences(
@@ -47,9 +49,15 @@ public class HandGestureEngine {
         );
     }
 
+    // ==============================
+    // INITIALIZE MEDIAPIPE
+    // ==============================
+
     public synchronized void initialize() throws Exception {
 
-        close();
+        if (landmarker != null) {
+            return;
+        }
 
         BaseOptions baseOptions = BaseOptions.builder()
                 .setModelAssetPath("hand_landmarker.task")
@@ -71,32 +79,40 @@ public class HandGestureEngine {
         );
     }
 
+    // ==============================
+    // HAND LANDMARK DETECTION
+    // ==============================
+
     private float[] getLandmarks(Bitmap bitmap) {
 
-        if (landmarker == null || bitmap == null
-                || bitmap.isRecycled()) {
+        if (landmarker == null || bitmap == null) {
             return null;
         }
 
         Bitmap safeBitmap = bitmap;
-        boolean copied = false;
+        Bitmap copiedBitmap = null;
+
+        MPImage image = null;
 
         try {
 
             if (bitmap.getConfig() != Bitmap.Config.ARGB_8888) {
 
-                safeBitmap = bitmap.copy(
+                copiedBitmap = bitmap.copy(
                         Bitmap.Config.ARGB_8888,
                         false
                 );
 
-                copied = true;
+                safeBitmap = copiedBitmap;
             }
 
-            if (safeBitmap == null) return null;
+            if (safeBitmap == null) {
+                return null;
+            }
 
-            MPImage image =
-                    new BitmapImageBuilder(safeBitmap).build();
+            image = new BitmapImageBuilder(
+                    safeBitmap
+            ).build();
 
             HandLandmarkerResult result =
                     landmarker.detect(image);
@@ -117,29 +133,33 @@ public class HandGestureEngine {
             for (int i = 0; i < 21; i++) {
 
                 values[i * 3] = points.get(i).x();
+
                 values[i * 3 + 1] = points.get(i).y();
+
                 values[i * 3 + 2] = points.get(i).z();
             }
 
             return normalize(values);
 
-        } catch (Exception e) {
-            return null;
-
         } finally {
 
-            if (copied && safeBitmap != null
-                    && !safeBitmap.isRecycled()) {
-                safeBitmap.recycle();
+            if (image != null) {
+                image.close();
+            }
+
+            if (copiedBitmap != null
+                    && !copiedBitmap.isRecycled()) {
+
+                copiedBitmap.recycle();
             }
         }
     }
 
-    private float[] normalize(float[] values) {
+    // ==============================
+    // NORMALIZE LANDMARKS
+    // ==============================
 
-        if (values == null || values.length != 63) {
-            return null;
-        }
+    private float[] normalize(float[] values) {
 
         float originX = values[0];
         float originY = values[1];
@@ -150,7 +170,9 @@ public class HandGestureEngine {
         for (int i = 0; i < 21; i++) {
 
             values[i * 3] -= originX;
+
             values[i * 3 + 1] -= originY;
+
             values[i * 3 + 2] -= originZ;
 
             float x = values[i * 3];
@@ -161,17 +183,26 @@ public class HandGestureEngine {
                     x * x + y * y + z * z
             );
 
-            maxDistance = Math.max(maxDistance, distance);
+            maxDistance = Math.max(
+                    maxDistance,
+                    distance
+            );
         }
 
-        if (maxDistance <= 0f) return null;
+        if (maxDistance > 0f) {
 
-        for (int i = 0; i < values.length; i++) {
-            values[i] /= maxDistance;
+            for (int i = 0; i < values.length; i++) {
+
+                values[i] /= maxDistance;
+            }
         }
 
         return values;
     }
+
+    // ==============================
+    // START LEARNING
+    // ==============================
 
     public synchronized boolean startLearning(
             String name,
@@ -182,16 +213,22 @@ public class HandGestureEngine {
                 || name.trim().isEmpty()
                 || action == null
                 || action.trim().isEmpty()) {
+
             return false;
         }
 
         learningName = name.trim();
+
         learningAction = action.trim();
 
         learningSamples.clear();
 
         return true;
     }
+
+    // ==============================
+    // ADD LEARNING FRAME
+    // ==============================
 
     public synchronized int addLearningFrame(Bitmap bitmap) {
 
@@ -215,22 +252,41 @@ public class HandGestureEngine {
                     learningSamples
             );
 
+            if (!saved) {
+                learningSamples.clear();
+                learningName = null;
+                learningAction = null;
+                return -1;
+            }
+
             learningSamples.clear();
+
             learningName = null;
+
             learningAction = null;
 
-            return saved ? REQUIRED_SAMPLES : -1;
+            return REQUIRED_SAMPLES;
         }
 
         return learningSamples.size();
     }
 
+    // ==============================
+    // CANCEL LEARNING
+    // ==============================
+
     public synchronized void cancelLearning() {
 
         learningSamples.clear();
+
         learningName = null;
+
         learningAction = null;
     }
+
+    // ==============================
+    // SAVE GESTURE
+    // ==============================
 
     private boolean saveGesture(
             String name,
@@ -239,136 +295,139 @@ public class HandGestureEngine {
 
         try {
 
-            JSONArray all = getSavedData();
-            JSONArray updated = new JSONArray();
+            JSONArray oldData = getSavedData();
 
-            String target = normalizeName(name);
+            JSONArray all = new JSONArray();
 
-            // पुराने नाम वाले Gesture को हटाएँ
-            for (int i = 0; i < all.length(); i++) {
+            // Same name ka purana Gesture replace hoga.
+            for (int i = 0; i < oldData.length(); i++) {
 
-                JSONObject old = all.optJSONObject(i);
+                JSONObject oldItem =
+                        oldData.optJSONObject(i);
 
-                if (old == null) continue;
+                if (oldItem == null) {
+                    continue;
+                }
 
-                String oldName = normalizeName(
-                        old.optString("name", "")
+                String oldName = oldItem.optString(
+                        "name",
+                        ""
                 );
 
-                if (!oldName.equals(target)) {
-                    updated.put(old);
+                if (!oldName.equalsIgnoreCase(name)) {
+                    all.put(oldItem);
                 }
             }
 
             JSONObject gesture = new JSONObject();
 
-            gesture.put("name", name.trim());
-            gesture.put("action", action.trim());
+            gesture.put("name", name);
+
+            gesture.put("action", action);
 
             JSONArray sampleArray = new JSONArray();
 
             for (float[] sample : samples) {
 
-                if (sample == null || sample.length != 63) {
-                    continue;
-                }
-
                 JSONArray points = new JSONArray();
 
                 for (float value : sample) {
+
                     points.put(value);
                 }
 
                 sampleArray.put(points);
             }
 
-            if (sampleArray.length() == 0) {
-                return false;
-            }
-
             gesture.put("samples", sampleArray);
-            updated.put(gesture);
 
-            return preferences.edit()
-                    .putString(DATA_KEY, updated.toString())
+            all.put(gesture);
+
+            boolean success = preferences.edit()
+                    .putString(DATA_KEY, all.toString())
                     .commit();
 
+            return success;
+
         } catch (Exception e) {
+
             return false;
         }
     }
 
+    // ==============================
+    // RECOGNIZE GESTURE
+    // ==============================
+
     public synchronized JSONObject recognize(Bitmap bitmap) {
 
-        if (landmarker == null) return null;
+        if (landmarker == null || bitmap == null) {
+            return null;
+        }
 
         float[] current = getLandmarks(bitmap);
 
-        if (current == null) return null;
+        if (current == null) {
+            return null;
+        }
 
         JSONArray all = getSavedData();
 
         JSONObject bestMatch = null;
+
         float bestDistance = Float.MAX_VALUE;
 
         for (int i = 0; i < all.length(); i++) {
 
             try {
 
-                JSONObject gesture = all.optJSONObject(i);
+                JSONObject gesture = all.getJSONObject(i);
 
-                if (gesture == null) continue;
-
-                JSONArray samples =
-                        gesture.optJSONArray("samples");
-
-                if (samples == null) continue;
+                JSONArray samples = gesture.getJSONArray(
+                        "samples"
+                );
 
                 float totalDistance = 0f;
+
                 int validSamples = 0;
 
                 for (int j = 0; j < samples.length(); j++) {
 
-                    JSONArray points = samples.optJSONArray(j);
+                    JSONArray points = samples.getJSONArray(j);
 
-                    if (points == null || points.length() != 63) {
+                    if (points.length() != 63) {
                         continue;
                     }
 
                     float distance = 0f;
-                    boolean valid = true;
 
                     for (int k = 0; k < 63; k++) {
 
-                        double stored = points.optDouble(k,
-                                Double.NaN);
-
-                        if (Double.isNaN(stored)
-                                || Double.isInfinite(stored)) {
-                            valid = false;
-                            break;
-                        }
-
                         float difference =
-                                current[k] - (float) stored;
+                                current[k] -
+                                (float) points.getDouble(k);
 
                         distance += difference * difference;
                     }
 
-                    if (!valid) continue;
-
-                    totalDistance +=
-                            (float) Math.sqrt(distance / 63f);
+                    totalDistance += (float) Math.sqrt(
+                            distance / 63f
+                    );
 
                     validSamples++;
                 }
 
-                if (validSamples == 0) continue;
+                if (validSamples == 0) {
+                    continue;
+                }
 
-                float average = totalDistance / validSamples;
+                float average =
+                        totalDistance / validSamples;
 
                 if (average < bestDistance) {
+
                     bestDistance = average;
+
                     bestMatch = gesture;
                 }
 
@@ -383,9 +442,20 @@ public class HandGestureEngine {
 
                 JSONObject match = new JSONObject();
 
-                match.put("name", bestMatch.optString("name"));
-                match.put("action", bestMatch.optString("action"));
-                match.put("distance", bestDistance);
+                match.put(
+                        "name",
+                        bestMatch.getString("name")
+                );
+
+                match.put(
+                        "action",
+                        bestMatch.getString("action")
+                );
+
+                match.put(
+                        "distance",
+                        bestDistance
+                );
 
                 return match;
 
@@ -396,28 +466,30 @@ public class HandGestureEngine {
         return null;
     }
 
-    private String normalizeName(String name) {
-
-        if (name == null) return "";
-
-        return name.trim().toLowerCase(Locale.ROOT);
-    }
+    // ==============================
+    // GET SAVED GESTURES
+    // ==============================
 
     public synchronized JSONArray getSavedData() {
 
-        try {
+        String saved = preferences.getString(
+                DATA_KEY,
+                "[]"
+        );
 
-            String saved = preferences.getString(
-                    DATA_KEY,
-                    "[]"
-            );
+        try {
 
             return new JSONArray(saved);
 
         } catch (Exception e) {
+
             return new JSONArray();
         }
     }
+
+    // ==============================
+    // REMOVE GESTURE
+    // ==============================
 
     public synchronized boolean removeGesture(String name) {
 
@@ -426,25 +498,30 @@ public class HandGestureEngine {
         }
 
         JSONArray oldData = getSavedData();
+
         JSONArray newData = new JSONArray();
 
         boolean removed = false;
-
-        String target = normalizeName(name);
 
         for (int i = 0; i < oldData.length(); i++) {
 
             JSONObject item = oldData.optJSONObject(i);
 
-            if (item == null) continue;
+            if (item == null) {
+                continue;
+            }
 
-            String existing = normalizeName(
-                    item.optString("name", "")
+            String savedName = item.optString(
+                    "name",
+                    ""
             );
 
-            if (existing.equals(target)) {
+            if (savedName.equalsIgnoreCase(name.trim())) {
+
                 removed = true;
+
             } else {
+
                 newData.put(item);
             }
         }
@@ -459,7 +536,13 @@ public class HandGestureEngine {
         return false;
     }
 
+    // ==============================
+    // CLOSE MEDIAPIPE
+    // ==============================
+
     public synchronized void close() {
+
+        cancelLearning();
 
         if (landmarker != null) {
 
@@ -470,9 +553,5 @@ public class HandGestureEngine {
 
             landmarker = null;
         }
-
-        learningSamples.clear();
-        learningName = null;
-        learningAction = null;
     }
 }
