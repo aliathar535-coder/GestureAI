@@ -17,6 +17,7 @@ import androidx.lifecycle.LifecycleOwner;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
@@ -43,6 +44,7 @@ public class HandCameraController {
 
     private volatile boolean learning = false;
     private volatile boolean running = false;
+    private volatile boolean closed = false;
 
     private String lastGesture = "";
     private long lastGestureTime = 0;
@@ -53,7 +55,7 @@ public class HandCameraController {
             PreviewView previewView,
             Listener listener) {
 
-        this.context = context;
+        this.context = context.getApplicationContext();
         this.lifecycleOwner = lifecycleOwner;
         this.previewView = previewView;
         this.listener = listener;
@@ -66,7 +68,7 @@ public class HandCameraController {
 
     public void start() {
 
-        if (running) return;
+        if (running || closed) return;
 
         cameraExecutor.execute(() -> {
 
@@ -78,26 +80,29 @@ public class HandCameraController {
 
                 future.addListener(() -> {
 
+                    if (closed) return;
+
                     try {
                         cameraProvider = future.get();
                         bindCamera();
-                        running = true;
 
                     } catch (Exception e) {
-                        sendError("Camera start failed: " +
-                                e.getMessage());
+                        sendError("Camera start failed: "
+                                + e.getMessage());
                     }
 
                 }, ContextCompat.getMainExecutor(context));
 
             } catch (Exception e) {
-                sendError("Hand recognition start failed: " +
-                        e.getMessage());
+                sendError("Hand recognition start failed: "
+                        + e.getMessage());
             }
         });
     }
 
     private void bindCamera() {
+
+        if (closed) return;
 
         Preview preview = new Preview.Builder().build();
 
@@ -110,7 +115,9 @@ public class HandCameraController {
                                 ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
 
-        analysis.setAnalyzer(cameraExecutor, this::analyzeFrame);
+        analysis.setAnalyzer(
+                cameraExecutor,
+                this::analyzeFrame);
 
         try {
 
@@ -123,15 +130,19 @@ public class HandCameraController {
                     analysis
             );
 
+            running = true;
+
         } catch (Exception e) {
-            sendError("Camera binding failed: " +
-                    e.getMessage());
+            sendError("Camera binding failed: "
+                    + e.getMessage());
         }
     }
 
     private void analyzeFrame(ImageProxy image) {
 
         try {
+
+            if (closed) return;
 
             Bitmap bitmap = image.toBitmap();
 
@@ -143,14 +154,14 @@ public class HandCameraController {
 
                 if (count >= 0) {
 
-                    if (count == 5) {
+                    if (count >= 5) {
                         learning = false;
                     }
 
                     int progress = count;
 
                     mainHandler.post(() -> {
-                        if (listener != null) {
+                        if (!closed && listener != null) {
                             listener.onLearningProgress(progress);
                         }
                     });
@@ -167,14 +178,14 @@ public class HandCameraController {
 
                     long now = System.currentTimeMillis();
 
-                    if (!name.equals(lastGesture) ||
-                            now - lastGestureTime > 1500) {
+                    if (!name.equals(lastGesture)
+                            || now - lastGestureTime > 1500) {
 
                         lastGesture = name;
                         lastGestureTime = now;
 
                         mainHandler.post(() -> {
-                            if (listener != null) {
+                            if (!closed && listener != null) {
                                 listener.onGestureRecognized(
                                         name, action);
                             }
@@ -183,9 +194,12 @@ public class HandCameraController {
                 }
             }
 
+            bitmap.recycle();
+
         } catch (Exception e) {
-            sendError("Frame processing failed: " +
-                    e.getMessage());
+            sendError("Frame processing failed: "
+                    + e.getMessage());
+
         } finally {
             image.close();
         }
@@ -193,33 +207,50 @@ public class HandCameraController {
 
     public boolean startLearning(String name, String action) {
 
-        if (!running || learning) return false;
+        if (!running || learning || closed) {
+            return false;
+        }
 
         boolean started = engine.startLearning(name, action);
 
         if (started) {
             learning = true;
+            lastGesture = "";
+            lastGestureTime = 0;
         }
 
         return started;
     }
 
     public void cancelLearning() {
+
         learning = false;
-        engine.cancelLearning();
+
+        if (!closed) {
+            engine.cancelLearning();
+        }
     }
 
     public boolean removeGesture(String name) {
+
+        if (closed) return false;
+
         return engine.removeGesture(name);
     }
 
-    public org.json.JSONArray getSavedGestures() {
+    public JSONArray getSavedGestures() {
+
+        if (closed) {
+            return new JSONArray();
+        }
+
         return engine.getSavedData();
     }
 
     private void sendError(String message) {
+
         mainHandler.post(() -> {
-            if (listener != null) {
+            if (!closed && listener != null) {
                 listener.onError(message);
             }
         });
@@ -231,16 +262,43 @@ public class HandCameraController {
         running = false;
 
         if (cameraProvider != null) {
-            cameraProvider.unbindAll();
+
+            try {
+                cameraProvider.unbindAll();
+            } catch (Exception e) {
+                sendError("Camera stop failed: "
+                        + e.getMessage());
+            }
+
             cameraProvider = null;
         }
 
-        cameraExecutor.execute(engine::close);
+        if (!closed) {
+            cameraExecutor.execute(engine::close);
+        }
     }
 
     public void shutdown() {
 
-        stop();
-        cameraExecutor.shutdown();
+        if (closed) return;
+
+        learning = false;
+        running = false;
+        closed = true;
+
+        if (cameraProvider != null) {
+
+            try {
+                cameraProvider.unbindAll();
+            } catch (Exception ignored) {
+            }
+
+            cameraProvider = null;
+        }
+
+        cameraExecutor.execute(() -> {
+            engine.close();
+            cameraExecutor.shutdown();
+        });
     }
-                      }
+}
