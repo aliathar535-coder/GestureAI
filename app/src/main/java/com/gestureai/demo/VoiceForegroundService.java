@@ -54,7 +54,6 @@ public class VoiceForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-
         createNotificationChannel();
     }
 
@@ -70,7 +69,6 @@ public class VoiceForegroundService extends Service {
         }
 
         startVoice();
-
         return START_STICKY;
     }
 
@@ -93,7 +91,6 @@ public class VoiceForegroundService extends Service {
         }
 
         try {
-
             startVoiceForeground();
 
             serviceRunning = true;
@@ -177,11 +174,8 @@ public class VoiceForegroundService extends Service {
         Notification.Builder builder;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
             builder = new Notification.Builder(this, CHANNEL_ID);
-
         } else {
-
             builder = new Notification.Builder(this);
         }
 
@@ -291,7 +285,8 @@ public class VoiceForegroundService extends Service {
 
                         String command = matches.get(0);
 
-                        if (command != null && !command.trim().isEmpty()) {
+                        if (command != null
+                                && !command.trim().isEmpty()) {
 
                             handleVoiceCommand(command.trim());
                         }
@@ -380,10 +375,13 @@ public class VoiceForegroundService extends Service {
         try {
 
             Intent intent = new Intent(
-                    "com.gestureai.demo.VOICE_COMMAND"
+                    this,
+                    FloatingOverlayService.class
             );
 
-            intent.setPackage(getPackageName());
+            intent.setAction(
+                    "com.gestureai.demo.VOICE_COMMAND"
+            );
 
             intent.putExtra(
                     "voice_command",
@@ -393,7 +391,7 @@ public class VoiceForegroundService extends Service {
             startService(intent);
 
         } catch (Exception e) {
-            // Recognition continues even if command delivery fails.
+            // Recognition continues if command delivery fails.
         }
     }
 
@@ -495,7 +493,6 @@ public class VoiceForegroundService extends Service {
     public void onDestroy() {
 
         stopVoice();
-
         super.onDestroy();
     }
 
