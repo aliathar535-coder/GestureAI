@@ -400,7 +400,11 @@ public class FloatingOverlayService extends Service {
         lp.setMargins(dp(2), dp(3), dp(2), dp(3));
 
         b.setTag(lp);
-        b.setOnClickListener(v -> task());
+        b.setOnClickListener(v -> {
+    if (task != null) {
+        task.run();
+    }
+});
 
         return b;
     }
