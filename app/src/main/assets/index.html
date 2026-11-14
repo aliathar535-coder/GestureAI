@@ -42,6 +42,12 @@ video{width:100%;max-height:300px;background:#000;border-radius:13px}
 .feature{padding:15px;border:1px solid #31547a;background:#0b1930;border-radius:13px;margin:12px 0}
 .feature strong{color:#69eaff}
 footer{text-align:center;color:#627493;font-size:11px;padding:20px}
+.custom-command{background:#0b152b;border:1px solid #30466e;border-radius:12px;padding:12px;margin:10px 0}
+.custom-command strong{display:block;color:#68eaff;font-size:15px;overflow-wrap:anywhere}
+.custom-command small{display:block;color:#a8bad8;margin-top:6px;overflow-wrap:anywhere}
+.custom-command .row{margin-top:8px}
+.custom-command button{flex:1}
+.voice-help{border:1px solid #31547a;background:#0b1930;padding:12px;border-radius:12px;margin:10px 0}
 </style>
 </head>
 
@@ -95,16 +101,12 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  <div class="card">
   <h2>✋ Hand Gesture Control</h2>
   <p>अपने हाथ के इशारे सीखें, सेव करें और उनसे मोबाइल के काम नियंत्रित करें।</p>
-
   <div class="feature">
    <strong>REAL HAND GESTURE ENGINE</strong>
    <p>यह Android की अलग Hand Gesture स्क्रीन खोलेगा। वहाँ कैमरे से इशारा सीखने और सेव करने की सुविधा मिलेगी।</p>
    <button class="primary" style="width:100%;padding:16px" onclick="openHandGesture()">✋ OPEN HAND GESTURE CONTROL</button>
   </div>
-
-  <div class="status">
-   उपलब्ध सुविधाएँ Android Hand Gesture स्क्रीन में दिखाई देंगी। कैमरा अनुमति आवश्यक है।
-  </div>
+  <div class="status">उपलब्ध सुविधाएँ Android Hand Gesture स्क्रीन में दिखाई देंगी। कैमरा अनुमति आवश्यक है।</div>
  </div>
 </section>
 
@@ -198,6 +200,44 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  </div>
 
  <div class="card">
+  <h2>🗣️ Custom Voice Commands</h2>
+  <p>अपनी पसंद का शब्द या वाक्य सेव करें। Voice Control चालू करके वह वाक्य बोलने पर Gesture AI उससे जुड़ा Action चलाने की कोशिश करेगा।</p>
+
+  <div class="voice-help">
+   <strong style="color:#69eaff">उदाहरण:</strong>
+   <p>आप लिख सकते हैं: "आवाज़ बढ़ाओ" और Action में Volume Up चुन सकते हैं।</p>
+   <p>हिंदी और अंग्रेज़ी दोनों तरह के कमांड लिख सकते हैं।</p>
+  </div>
+
+  <label for="customPhrase">अपना Voice Command लिखें</label>
+  <input id="customPhrase" type="text" placeholder="जैसे: आवाज़ बढ़ाओ / increase volume">
+
+  <label for="customAction">इस कमांड पर कौन-सा काम हो?</label>
+  <select id="customAction">
+   <option value="volume up">Volume Up — आवाज़ बढ़ाएँ</option>
+   <option value="volume down">Volume Down — आवाज़ घटाएँ</option>
+   <option value="mute">Mute — आवाज़ बंद करें</option>
+   <option value="back">Back — पीछे जाएँ</option>
+   <option value="home">Home — होम स्क्रीन</option>
+   <option value="recent">Recent — हाल की ऐप्स</option>
+   <option value="scroll up">Scroll Up — ऊपर स्क्रॉल</option>
+   <option value="scroll down">Scroll Down — नीचे स्क्रॉल</option>
+   <option value="flashlight">Flashlight — टॉर्च</option>
+  </select>
+
+  <button class="primary" id="saveCustomCommandButton" onclick="saveCustomVoiceCommand()" style="width:100%">💾 SAVE VOICE COMMAND</button>
+  <button class="secondary" id="cancelCustomEditButton" onclick="cancelCustomEdit()" style="width:100%;display:none">Cancel Edit</button>
+
+  <div id="customVoiceStatus" class="status">अपना कमांड लिखकर Save दबाएँ।</div>
+
+  <h3>📋 आपके Saved Voice Commands</h3>
+  <div id="customVoiceList">
+   <p>सेव किए गए कमांड यहाँ दिखाई देंगे।</p>
+  </div>
+  <button class="secondary" onclick="loadCustomVoiceCommands()" style="width:100%">↻ Refresh Command List</button>
+ </div>
+
+ <div class="card">
   <h2>📷 Camera Control</h2>
   <button onclick="startCamera('cameraPreview')">Start Camera</button>
   <button class="danger" onclick="stopCamera('cameraPreview')">Stop Camera</button>
@@ -226,8 +266,8 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  </div>
 
 </section>
-</main>
-
+ </main>
+ 
 <footer>GESTURE AI • SMART CONTROL SYSTEM</footer>
 
 <script>
@@ -255,13 +295,11 @@ function showPage(pageId,button){
 function openHandGesture(){
 
  if(hasAndroid() && Android.openHandGesture){
-
   try{
    Android.openHandGesture();
   }catch(error){
    alert('Hand Gesture स्क्रीन नहीं खुल सकी।');
   }
-
  }else{
   alert('Hand Gesture Control Android APK में उपलब्ध होगा।');
  }
@@ -302,12 +340,9 @@ function startVoiceControl(){
  }
 
  if(!Android.isAudioAllowed || !Android.isAudioAllowed()){
-
   askMicrophonePermission();
-
   document.getElementById('voiceStatus').innerText=
    'Microphone अनुमति दें, फिर VOICE ON दबाएँ।';
-
   return;
  }
 
@@ -321,9 +356,224 @@ function stopVoiceControl(){
 
  if(hasAndroid() && Android.stopVoiceControl){
   Android.stopVoiceControl();
-
   document.getElementById('voiceStatus').innerText=
    'Voice Control बंद करने का अनुरोध भेज दिया गया।';
+ }
+}
+
+// CUSTOM VOICE COMMANDS
+
+let editingCustomPhrase=null;
+
+function setCustomVoiceStatus(message){
+ const status=document.getElementById('customVoiceStatus');
+ if(status) status.textContent=message;
+}
+
+function loadCustomVoiceCommands(){
+
+ const list=document.getElementById('customVoiceList');
+ if(!list) return;
+
+ if(!hasAndroid() || !Android.getCustomVoiceCommands){
+  list.textContent='Custom Voice Commands की सुविधा Android APK में उपलब्ध होगी।';
+  return;
+ }
+
+ try{
+
+  const result=Android.getCustomVoiceCommands();
+  const commands=typeof result==='string'?JSON.parse(result):result;
+
+  list.innerHTML='';
+
+  if(!Array.isArray(commands) || commands.length===0){
+   list.textContent='अभी कोई Custom Voice Command सेव नहीं है।';
+   return;
+  }
+
+  commands.forEach(function(command){
+
+   const phrase=command.phrase || '';
+   const action=command.action || '';
+
+   const item=document.createElement('div');
+   item.className='custom-command';
+
+   const title=document.createElement('strong');
+   title.textContent='🗣️ '+phrase;
+
+   const detail=document.createElement('small');
+   detail.textContent='Action: '+action;
+
+   const buttons=document.createElement('div');
+   buttons.className='row';
+
+   const editButton=document.createElement('button');
+   editButton.className='secondary';
+   editButton.textContent='✏️ Edit';
+   editButton.type='button';
+
+   editButton.addEventListener('click',function(){
+    editCustomVoiceCommand(phrase,action);
+   });
+
+   const removeButton=document.createElement('button');
+   removeButton.className='danger';
+   removeButton.textContent='🗑️ Remove';
+   removeButton.type='button';
+
+   removeButton.addEventListener('click',function(){
+    removeCustomVoiceCommand(phrase);
+   });
+
+   buttons.appendChild(editButton);
+   buttons.appendChild(removeButton);
+
+   item.appendChild(title);
+   item.appendChild(detail);
+   item.appendChild(buttons);
+
+   list.appendChild(item);
+  });
+
+ }catch(error){
+  console.error('Custom voice list error:',error);
+  list.textContent='कमांड सूची लोड नहीं हो सकी।';
+ }
+}
+
+function saveCustomVoiceCommand(){
+
+ if(!hasAndroid() || !Android.saveCustomVoiceCommand){
+  setCustomVoiceStatus('यह सुविधा Android APK में उपलब्ध होगी।');
+  return;
+ }
+
+ const phraseInput=document.getElementById('customPhrase');
+ const actionInput=document.getElementById('customAction');
+
+ const phrase=phraseInput.value.trim();
+ const action=actionInput.value;
+
+ if(!phrase){
+  setCustomVoiceStatus('पहले अपना Voice Command लिखें।');
+  phraseInput.focus();
+  return;
+ }
+
+ if(!action){
+  setCustomVoiceStatus('कृपया एक Action चुनें।');
+  return;
+ }
+
+ try{
+
+  if(editingCustomPhrase!==null &&
+     editingCustomPhrase!==phrase){
+
+   const removed=Android.removeCustomVoiceCommand(editingCustomPhrase);
+
+   if(!removed){
+    setCustomVoiceStatus('पुराना कमांड अपडेट नहीं हो सका। दोबारा कोशिश करें।');
+    return;
+   }
+  }
+
+  const saved=Android.saveCustomVoiceCommand(phrase,action);
+
+  if(saved){
+
+   setCustomVoiceStatus('कमांड सफलतापूर्वक सेव हो गया।');
+
+   phraseInput.value='';
+   actionInput.value='volume up';
+
+   editingCustomPhrase=null;
+
+   document.getElementById('saveCustomCommandButton').textContent=
+    '💾 SAVE VOICE COMMAND';
+
+   document.getElementById('cancelCustomEditButton').style.display='none';
+
+   loadCustomVoiceCommands();
+
+  }else{
+   setCustomVoiceStatus('कमांड सेव नहीं हुआ। कृपया दोबारा कोशिश करें।');
+  }
+
+ }catch(error){
+  console.error('Save command error:',error);
+  setCustomVoiceStatus('कमांड सेव करते समय समस्या आई।');
+ }
+}
+
+function editCustomVoiceCommand(phrase,action){
+
+ document.getElementById('customPhrase').value=phrase;
+ document.getElementById('customAction').value=action;
+
+ editingCustomPhrase=phrase;
+
+ document.getElementById('saveCustomCommandButton').textContent=
+  '✏️ UPDATE VOICE COMMAND';
+
+ document.getElementById('cancelCustomEditButton').style.display='block';
+
+ setCustomVoiceStatus('अब कमांड या Action बदलें और Update दबाएँ।');
+
+ document.getElementById('customPhrase').scrollIntoView({
+  behavior:'smooth',
+  block:'center'
+ });
+}
+
+function cancelCustomEdit(){
+
+ editingCustomPhrase=null;
+
+ document.getElementById('customPhrase').value='';
+ document.getElementById('customAction').value='volume up';
+
+ document.getElementById('saveCustomCommandButton').textContent=
+  '💾 SAVE VOICE COMMAND';
+
+ document.getElementById('cancelCustomEditButton').style.display='none';
+
+ setCustomVoiceStatus('Edit रद्द कर दिया गया।');
+}
+
+function removeCustomVoiceCommand(phrase){
+
+ if(!confirm('क्या आप "'+phrase+'" कमांड हटाना चाहते हैं?')){
+  return;
+ }
+
+ if(!hasAndroid() || !Android.removeCustomVoiceCommand){
+  setCustomVoiceStatus('Remove सुविधा Android APK में उपलब्ध होगी।');
+  return;
+ }
+
+ try{
+
+  const removed=Android.removeCustomVoiceCommand(phrase);
+
+  if(removed){
+
+   if(editingCustomPhrase===phrase){
+    cancelCustomEdit();
+   }
+
+   setCustomVoiceStatus('कमांड हटा दिया गया।');
+   loadCustomVoiceCommands();
+
+  }else{
+   setCustomVoiceStatus('कमांड हटाया नहीं जा सका।');
+  }
+
+ }catch(error){
+  console.error('Remove command error:',error);
+  setCustomVoiceStatus('कमांड हटाते समय समस्या आई।');
  }
 }
 
@@ -371,8 +621,7 @@ async function startCamera(videoId,facingId){
    videoId==='faceVideo' ? 'faceMessage' : null;
 
   if(messageId){
-   document.getElementById(messageId).innerText=
-    'Camera चालू है।';
+   document.getElementById(messageId).innerText='Camera चालू है।';
   }
 
   updateCameraStatus();
@@ -406,8 +655,7 @@ function stopCamera(videoId){
   videoId==='faceVideo' ? 'faceMessage' : null;
 
  if(messageId){
-  document.getElementById(messageId).innerText=
-   'Camera बंद है।';
+  document.getElementById(messageId).innerText='Camera बंद है।';
  }
 
  updateCameraStatus();
@@ -680,6 +928,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
  checkPermissions();
  updateCameraStatus();
+ loadCustomVoiceCommands();
 
 });
 
