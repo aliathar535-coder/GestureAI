@@ -34,12 +34,17 @@ jobs:
           curl -L --fail --retry 3 \
             "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" \
             -o app/src/main/assets/hand_landmarker.task
+          test -s app/src/main/assets/hand_landmarker.task
 
       - name: Build debug APK
         run: gradle assembleDebug
+
+      - name: Verify APK
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Gesture-AI-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          
