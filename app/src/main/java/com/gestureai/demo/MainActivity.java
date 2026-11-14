@@ -4,6 +4,7 @@ package com.gestureai.demo;
 import android.Manifest;
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Build;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -41,6 +42,7 @@ public class MainActivity extends Activity {
 
     private static final int CAMERA_PERMISSION_CODE = 7;
     private static final int AUDIO_PERMISSION_CODE = 8;
+    private static final int NOTIFICATION_PERMISSION_CODE = 9;
 
     private static final String APP_HOST =
             "appassets.androidplatform.net";
@@ -141,28 +143,27 @@ public class MainActivity extends Activity {
                     }
 
                     boolean allowed = true;
-                    boolean needsCamera = false;
-                    boolean needsAudio = false;
 
                     for (String resource : request.getResources()) {
 
-                        if (resource.equals(
-                                PermissionRequest.RESOURCE_VIDEO_CAPTURE
-                        )) {
-                            needsCamera = true;
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                                .equals(resource)) {
 
                             if (!hasCameraPermission()) {
                                 allowed = false;
+                                requestCameraPermission();
                             }
 
-                        } else if (resource.equals(
-                                PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                        )) {
-                            needsAudio = true;
+                        } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                                .equals(resource)) {
 
                             if (!hasAudioPermission()) {
                                 allowed = false;
+                                requestAudioPermission();
                             }
+
+                        } else {
+                            allowed = false;
                         }
                     }
 
@@ -170,14 +171,6 @@ public class MainActivity extends Activity {
                         request.grant(request.getResources());
                     } else {
                         request.deny();
-
-                        if (needsCamera && !hasCameraPermission()) {
-                            requestCameraPermission();
-                        }
-
-                        if (needsAudio && !hasAudioPermission()) {
-                            requestAudioPermission();
-                        }
                     }
                 });
             }
@@ -207,6 +200,18 @@ public class MainActivity extends Activity {
         ) == PackageManager.PERMISSION_GRANTED;
     }
 
+    private boolean hasNotificationPermission() {
+
+        if (Build.VERSION.SDK_INT < 33) {
+            return true;
+        }
+
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void requestCameraPermission() {
         if (!hasCameraPermission()) {
             ActivityCompat.requestPermissions(
@@ -223,6 +228,21 @@ public class MainActivity extends Activity {
                     this,
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     AUDIO_PERMISSION_CODE
+            );
+        }
+    }
+
+    private void requestNotificationPermission() {
+
+        if (Build.VERSION.SDK_INT >= 33
+                && !hasNotificationPermission()) {
+
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{
+                            Manifest.permission.POST_NOTIFICATIONS
+                    },
+                    NOTIFICATION_PERMISSION_CODE
             );
         }
     }
@@ -349,8 +369,8 @@ public class MainActivity extends Activity {
             }
 
             return array.toString();
-        }
-
+                                    }
+        
         @JavascriptInterface
         public void launchApp(String packageName) {
 
@@ -545,6 +565,18 @@ public class MainActivity extends Activity {
                     return;
                 }
 
+                if (!hasNotificationPermission()) {
+                    requestNotificationPermission();
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Notification permission dein, phir Voice ON dabayein",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    return;
+                }
+
                 try {
                     Intent intent = new Intent(
                             MainActivity.this,
@@ -555,7 +587,7 @@ public class MainActivity extends Activity {
                             VoiceForegroundService.ACTION_START
                     );
 
-                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    if (Build.VERSION.SDK_INT >= 26) {
                         startForegroundService(intent);
                     } else {
                         startService(intent);
@@ -597,6 +629,54 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+            if (requestCode == CAMERA_PERMISSION_CODE) {
+                Toast.makeText(
+                        this,
+                        "Camera permission mil gayi",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+            } else if (requestCode == AUDIO_PERMISSION_CODE) {
+                Toast.makeText(
+                        this,
+                        "Microphone permission mil gayi",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+            } else if (requestCode == NOTIFICATION_PERMISSION_CODE) {
+                Toast.makeText(
+                        this,
+                        "Notification permission mil gayi",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+
+        } else if (requestCode == AUDIO_PERMISSION_CODE
+                || requestCode == NOTIFICATION_PERMISSION_CODE) {
+
+            Toast.makeText(
+                    this,
+                    "Voice Control ke liye permission zaroori hai",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
+    }
+
+    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) {
             web.goBack();
@@ -616,5 +696,4 @@ public class MainActivity extends Activity {
 
         super.onDestroy();
     }
-        }
-            
+    }
