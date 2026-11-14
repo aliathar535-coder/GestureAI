@@ -44,6 +44,7 @@ public class HandCameraController {
             new Handler(Looper.getMainLooper());
 
     private volatile ProcessCameraProvider cameraProvider;
+    private volatile ImageAnalysis imageAnalysis;
 
     private volatile boolean running = false;
     private volatile boolean starting = false;
@@ -67,7 +68,6 @@ public class HandCameraController {
         this.listener = listener;
 
         engine = new HandGestureEngine(this.context);
-
         cameraExecutor = Executors.newSingleThreadExecutor();
     }
 
@@ -163,9 +163,11 @@ public class HandCameraController {
                                     )
                                     .build();
 
+                    imageAnalysis = analysis;
+
                     analysis.setAnalyzer(
                             cameraExecutor,
-                            this::analyzeFrame
+                            image -> analyzeFrame(image, currentGeneration)
                     );
 
                     provider.unbindAll();
@@ -178,7 +180,13 @@ public class HandCameraController {
                     );
 
                     if (closed || currentGeneration != generation) {
+
+                        analysis.clearAnalyzer();
                         provider.unbindAll();
+
+                        imageAnalysis = null;
+                        cameraProvider = null;
+
                         starting = false;
                         running = false;
                         return;
@@ -205,6 +213,13 @@ public class HandCameraController {
                     starting = false;
                     running = false;
 
+                    ImageAnalysis oldAnalysis = imageAnalysis;
+                    imageAnalysis = null;
+
+                    if (oldAnalysis != null) {
+                        oldAnalysis.clearAnalyzer();
+                    }
+
                     sendError(
                             "Camera start nahi hua: " +
                                     e.getMessage()
@@ -222,7 +237,9 @@ public class HandCameraController {
         }
     }
 
-    private void analyzeFrame(ImageProxy image) {
+    private void analyzeFrame(
+            ImageProxy image,
+            int frameGeneration) {
 
         if (image == null) {
             return;
@@ -233,7 +250,9 @@ public class HandCameraController {
 
         try {
 
-            if (!running || closed) {
+            if (!running
+                    || closed
+                    || frameGeneration != generation) {
                 return;
             }
 
@@ -266,6 +285,12 @@ public class HandCameraController {
                 inputBitmap = rotatedBitmap;
             }
 
+            if (!running
+                    || closed
+                    || frameGeneration != generation) {
+                return;
+            }
+
             if (learning) {
 
                 int progress = engine.addLearningFrame(inputBitmap);
@@ -280,7 +305,10 @@ public class HandCameraController {
 
                     mainHandler.post(() -> {
 
-                        if (!closed && listener != null) {
+                        if (!closed
+                                && frameGeneration == generation
+                                && listener != null) {
+
                             listener.onLearningProgress(count);
                         }
                     });
@@ -307,7 +335,9 @@ public class HandCameraController {
 
                         mainHandler.post(() -> {
 
-                            if (!closed && listener != null) {
+                            if (!closed
+                                    && frameGeneration == generation
+                                    && listener != null) {
 
                                 listener.onGestureRecognized(
                                         name,
@@ -395,6 +425,13 @@ public class HandCameraController {
         lastGesture = "";
         lastGestureTime = 0;
 
+        ImageAnalysis analysis = imageAnalysis;
+        imageAnalysis = null;
+
+        if (analysis != null) {
+            analysis.clearAnalyzer();
+        }
+
         ProcessCameraProvider provider = cameraProvider;
         cameraProvider = null;
 
@@ -421,12 +458,18 @@ public class HandCameraController {
         }
 
         closed = true;
-
         generation++;
 
         starting = false;
         running = false;
         learning = false;
+
+        ImageAnalysis analysis = imageAnalysis;
+        imageAnalysis = null;
+
+        if (analysis != null) {
+            analysis.clearAnalyzer();
+        }
 
         ProcessCameraProvider provider = cameraProvider;
         cameraProvider = null;
@@ -458,4 +501,4 @@ public class HandCameraController {
             }
         });
     }
-                }
+}
