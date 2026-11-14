@@ -4,7 +4,10 @@ package com.gestureai.demo;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.graphics.Path;
+import android.graphics.Point;
 import android.os.Build;
+import android.view.Display;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 
 public class GestureAccessibilityService extends AccessibilityService {
@@ -35,10 +38,23 @@ public class GestureAccessibilityService extends AccessibilityService {
         CharSequence packageName = event.getPackageName();
 
         if (packageName != null &&
-                !getPackageName().contentEquals(packageName)) {
+                !getInstancePackageName().contentEquals(packageName)) {
 
             foregroundPackage = packageName.toString();
         }
+    }
+
+    private String getInstancePackageName() {
+        return getPackageName();
+    }
+
+    public static boolean performGlobalAction(int action) {
+
+        GestureAccessibilityService service = instance;
+
+        if (service == null) return false;
+
+        return service.performGlobalAction(action);
     }
 
     private static boolean canDispatch() {
@@ -53,18 +69,16 @@ public class GestureAccessibilityService extends AccessibilityService {
         Path path = new Path();
         path.moveTo(x, y);
 
-        GestureDescription.Builder builder =
-                new GestureDescription.Builder();
-
-        builder.addStroke(
+        GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(
-                        path, 0, 100
-                )
-        );
+                        path, 0, 100);
 
-        instance.dispatchGesture(
-                builder.build(), null, null
-        );
+        GestureDescription gesture =
+                new GestureDescription.Builder()
+                        .addStroke(stroke)
+                        .build();
+
+        instance.dispatchGesture(gesture, null, null);
     }
 
     public static void longPress(float x, float y) {
@@ -74,48 +88,26 @@ public class GestureAccessibilityService extends AccessibilityService {
         Path path = new Path();
         path.moveTo(x, y);
 
-        GestureDescription.Builder builder =
-                new GestureDescription.Builder();
-
-        builder.addStroke(
+        GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(
-                        path, 0, 900
-                )
-        );
+                        path, 0, 900);
 
-        instance.dispatchGesture(
-                builder.build(), null, null
-        );
+        GestureDescription gesture =
+                new GestureDescription.Builder()
+                        .addStroke(stroke)
+                        .build();
+
+        instance.dispatchGesture(gesture, null, null);
     }
 
     public static void doubleTap(float x, float y) {
 
-        if (!canDispatch()) return;
+        tap(x, y);
 
-        Path firstPath = new Path();
-        firstPath.moveTo(x, y);
-
-        Path secondPath = new Path();
-        secondPath.moveTo(x, y);
-
-        GestureDescription.Builder builder =
-                new GestureDescription.Builder();
-
-        builder.addStroke(
-                new GestureDescription.StrokeDescription(
-                        firstPath, 0, 80
-                )
-        );
-
-        builder.addStroke(
-                new GestureDescription.StrokeDescription(
-                        secondPath, 180, 80
-                )
-        );
-
-        instance.dispatchGesture(
-                builder.build(), null, null
-        );
+        if (instance != null) {
+            instance.getMainThreadHandler().postDelayed(
+                    () -> tap(x, y), 180);
+        }
     }
 
     public static void swipe(
@@ -123,32 +115,53 @@ public class GestureAccessibilityService extends AccessibilityService {
             float startY,
             float endX,
             float endY,
-            long duration
-    ) {
+            long duration) {
 
         if (!canDispatch()) return;
-
-        long safeDuration = Math.max(
-                100,
-                Math.min(duration, 5000)
-        );
 
         Path path = new Path();
         path.moveTo(startX, startY);
         path.lineTo(endX, endY);
 
-        GestureDescription.Builder builder =
-                new GestureDescription.Builder();
+        long safeDuration = Math.max(
+                100, Math.min(duration, 5000));
 
-        builder.addStroke(
+        GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(
-                        path, 0, safeDuration
-                )
-        );
+                        path, 0, safeDuration);
 
-        instance.dispatchGesture(
-                builder.build(), null, null
-        );
+        GestureDescription gesture =
+                new GestureDescription.Builder()
+                        .addStroke(stroke)
+                        .build();
+
+        instance.dispatchGesture(gesture, null, null);
+    }
+
+    public static boolean scroll(boolean up) {
+
+        if (!canDispatch()) return false;
+
+        GestureAccessibilityService service = instance;
+
+        if (service == null) return false;
+
+        WindowManager wm = service.getSystemService(
+                WindowManager.class);
+
+        if (wm == null) return false;
+
+        Display display = wm.getDefaultDisplay();
+        Point size = new Point();
+        display.getRealSize(size);
+
+        float centerX = size.x / 2f;
+        float startY = up ? size.y * 0.70f : size.y * 0.30f;
+        float endY = up ? size.y * 0.30f : size.y * 0.70f;
+
+        swipe(centerX, startY, centerX, endY, 400);
+
+        return true;
     }
 
     @Override
