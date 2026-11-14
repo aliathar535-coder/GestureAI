@@ -1,3 +1,4 @@
+
 package com.gestureai.demo;
 
 import android.app.Service;
@@ -43,6 +44,9 @@ public class FloatingOverlayService extends Service {
 
     private Handler handler = new Handler(Looper.getMainLooper());
     private VoiceCommandHelper voiceHelper;
+
+    // CUSTOM VOICE COMMAND STORE
+    private CustomVoiceCommandStore customVoiceStore;
 
     private class Item {
         int number;
@@ -117,6 +121,9 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+
+        // CUSTOM VOICE COMMAND INITIALIZATION
+        customVoiceStore = new CustomVoiceCommandStore(this);
 
         if (android.os.Build.VERSION.SDK_INT >= 23
                 && !Settings.canDrawOverlays(this)) {
@@ -502,8 +509,8 @@ public class FloatingOverlayService extends Service {
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
         wm.addView(panel, p);
-    }
-
+            }
+    
     private void closePanel() {
 
         if (panel != null && wm != null) {
@@ -602,8 +609,9 @@ public class FloatingOverlayService extends Service {
 
             return false;
         });
-      }
-         private void performItem(Item item) {
+    }
+
+    private void performItem(Item item) {
 
         if (!item.enabled) {
             Toast.makeText(this, "Button OFF hai",
@@ -852,6 +860,45 @@ public class FloatingOverlayService extends Service {
             return;
         }
 
+        // 1. SABSE PEHLE CUSTOM VOICE COMMAND CHECK
+        if (customVoiceStore != null) {
+
+            String customAction =
+                    customVoiceStore.findAction(command);
+
+            if (customAction != null
+                    && !customAction.trim().isEmpty()) {
+
+                try {
+
+                    GestureActionExecutor executor =
+                            new GestureActionExecutor(this);
+
+                    boolean success =
+                            executor.execute(customAction);
+
+                    Toast.makeText(
+                            this,
+                            success
+                                    ? "Custom voice command chal gaya"
+                                    : "Custom command ka action nahi chala",
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                } catch (Exception e) {
+
+                    Toast.makeText(
+                            this,
+                            "Custom command execute nahi hua",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+
+                return;
+            }
+        }
+
+        // 2. PURANE FLOATING BUTTON COMMAND CHECK
         Item found = findVoiceItem(command);
 
         if (found != null) {
@@ -859,6 +906,7 @@ public class FloatingOverlayService extends Service {
             return;
         }
 
+        // 3. PURANE APP OPEN COMMAND CHECK
         if (openMatchingApp(command)) {
             return;
         }
@@ -927,5 +975,4 @@ public class FloatingOverlayService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-}
-    
+                    }
