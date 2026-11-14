@@ -1,4 +1,3 @@
-
 package com.gestureai.demo;
 
 import android.app.AlertDialog;
@@ -36,11 +35,16 @@ public class FloatingOverlayService extends Service {
     private static final String PREF = "gesture_float_data";
     private static final String PROFILES = "app_profiles";
 
+    private static final String ACTION_VOICE_COMMAND =
+            "com.gestureai.demo.VOICE_COMMAND";
+
     private WindowManager wm;
     private LinearLayout panel;
     private TextView plus;
 
     private final ArrayList<Item> items = new ArrayList<>();
+
+    private CustomVoiceCommandStore commandStore;
 
     private final Handler handler =
             new Handler(Looper.getMainLooper());
@@ -107,6 +111,9 @@ public class FloatingOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
 
+        commandStore =
+                new CustomVoiceCommandStore(getApplicationContext());
+
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         serviceDestroyed = false;
@@ -139,7 +146,57 @@ public class FloatingOverlayService extends Service {
             return START_NOT_STICKY;
         }
 
+        if (intent != null
+                && ACTION_VOICE_COMMAND.equals(intent.getAction())) {
+
+            String spokenCommand =
+                    intent.getStringExtra("voice_command");
+
+            handleVoiceCommand(spokenCommand);
+        }
+
         return START_STICKY;
+    }
+
+    private void handleVoiceCommand(String spokenCommand) {
+
+        if (spokenCommand == null || spokenCommand.trim().isEmpty()) {
+            return;
+        }
+
+        String command = spokenCommand.trim();
+
+        if (commandStore != null) {
+
+            String customAction =
+                    commandStore.findAction(command);
+
+            if (customAction != null
+                    && !customAction.trim().isEmpty()) {
+
+                command = customAction.trim();
+            }
+        }
+
+        boolean success = false;
+
+        try {
+
+            GestureActionExecutor executor =
+                    new GestureActionExecutor(getApplicationContext());
+
+            success = executor.execute(command);
+
+        } catch (Exception ignored) {
+        }
+
+        Toast.makeText(
+                getApplicationContext(),
+                success
+                        ? "Voice Command चल गया"
+                        : "Command नहीं चला: " + command,
+                Toast.LENGTH_SHORT
+        ).show();
     }
 
     private int getOverlayType() {
@@ -268,7 +325,6 @@ public class FloatingOverlayService extends Service {
 
                         case MotionEvent.ACTION_UP:
                             return moved;
-
                     }
 
                     return false;
@@ -497,9 +553,7 @@ public class FloatingOverlayService extends Service {
                 "Floating Button सेव हो गया",
                 Toast.LENGTH_SHORT
         ).show();
-    }
-
-    private void createItemView(Item item) {
+            }    private void createItemView(Item item) {
 
         if (wm == null || item == null || !item.enabled) {
             return;
@@ -606,7 +660,7 @@ public class FloatingOverlayService extends Service {
 
         return false;
     }
-    
+
     private void showEditDialog(Item item) {
 
         if (item == null) {
@@ -992,4 +1046,4 @@ public class FloatingOverlayService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-        }
+                                                }
