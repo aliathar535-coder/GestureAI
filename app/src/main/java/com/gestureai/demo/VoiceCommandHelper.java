@@ -1,8 +1,8 @@
 
 package com.gestureai.demo;
 
+import android.Manifest;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -10,9 +10,11 @@ import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.content.Intent;
 
 import androidx.core.content.ContextCompat;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Locale;
 
@@ -20,107 +22,146 @@ public class VoiceCommandHelper {
 
     public interface Listener {
         void onCommand(String command);
-        void onError(String error);
+
+        void onError(String message);
     }
 
+    private final Handler handler =
+            new Handler(Looper.getMainLooper());
+
     private SpeechRecognizer recognizer;
-    private final Handler handler = new Handler(Looper.getMainLooper());
 
-    private boolean running = false;
-    private boolean destroyed = false;
+    private WeakReference<Context> contextReference;
 
-    private Context appContext;
-    private Listener currentListener;
+    private Listener listener;
+
+    private boolean listening = false;
+    private boolean stopped = true;
+
+    private int generation = 0;
 
     private String language = "hi-IN";
 
-    private final Runnable restartTask = () -> {
-        if (running && !destroyed) {
-            startListening();
-        }
-    };
+    public VoiceCommandHelper() {
+    }
 
-    public void start(Context context, Listener listener) {
+    public void start(Context context, Listener callback) {
 
-        if (context == null || listener == null) {
+        if (context == null || callback == null) {
             return;
         }
 
-        stop();
+        runOnMain(() -> {
 
-        appContext = context.getApplicationContext();
-        currentListener = listener;
-        running = true;
-        destroyed = false;
+            stopInternal();
 
-        if (ContextCompat.checkSelfPermission(
-                appContext,
-                android.Manifest.permission.RECORD_AUDIO
-        ) != PackageManager.PERMISSION_GRANTED) {
+            Context appContext = context.getApplicationContext();
 
-            running = false;
-            listener.onError("Microphone permission nahi hai");
-            return;
-        }
+            contextReference = new WeakReference<>(appContext);
+            listener = callback;
+            stopped = false;
 
-        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+            if (ContextCompat.checkSelfPermission(
+                    appContext,
+                    Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED) {
 
-            running = false;
-            listener.onError(
-                    "Speech recognition available nahi hai"
-            );
-            return;
-        }
+                sendError("Microphone Permission नहीं मिली");
+                stopInternal();
+                return;
+            }
 
-        startListening();
+            if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+
+                sendError("इस फोन में Speech Recognition उपलब्ध नहीं है");
+                stopInternal();
+                return;
+            }
+
+            createRecognizer();
+        });
     }
 
     public void setLanguage(String languageCode) {
 
-        if ("en-IN".equalsIgnoreCase(languageCode)) {
-            language = "en-IN";
-        } else {
-            language = "hi-IN";
+        if (languageCode == null || languageCode.trim().isEmpty()) {
+            return;
         }
+
+        runOnMain(() -> {
+
+            language = languageCode.trim();
+
+            if (!stopped && contextReference != null) {
+
+                Context context = contextReference.get();
+
+                if (context != null) {
+                    restartWithNewLanguage(context);
+                }
+            }
+        });
     }
 
-    private void startListening() {
+    private void restartWithNewLanguage(Context context) {
 
-        if (!running || destroyed || appContext == null) {
+        handler.removeCallbacksAndMessages(null);
+        destroyRecognizer();
+
+        stopped = false;
+
+        createRecognizer();
+    }
+
+    private void createRecognizer() {
+
+        if (stopped || contextReference == null) {
+            return;
+        }
+
+        Context context = contextReference.get();
+
+        if (context == null) {
+            stopInternal();
             return;
         }
 
         if (ContextCompat.checkSelfPermission(
-                appContext,
-                android.Manifest.permission.RECORD_AUDIO
+                context,
+                Manifest.permission.RECORD_AUDIO
         ) != PackageManager.PERMISSION_GRANTED) {
 
-            running = false;
+            sendError("Microphone Permission नहीं मिली");
+            stopInternal();
+            return;
+        }
 
-            if (currentListener != null) {
-                currentListener.onError(
-                        "Microphone permission nahi hai"
-                );
-            }
-
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            sendError("Speech Recognition उपलब्ध नहीं है");
+            stopInternal();
             return;
         }
 
         try {
 
-            if (recognizer != null) {
-                recognizer.destroy();
-                recognizer = null;
-            }
+            destroyRecognizer();
+
+            final int currentGeneration = ++generation;
 
             recognizer =
-                    SpeechRecognizer.createSpeechRecognizer(appContext);
+                    SpeechRecognizer.createSpeechRecognizer(context);
 
             recognizer.setRecognitionListener(
                     new RecognitionListener() {
 
                 @Override
                 public void onReadyForSpeech(Bundle params) {
+
+                    if (!isCurrent(currentGeneration)) {
+                        return;
+                    }
+
+                    listening = true;
                 }
 
                 @Override
@@ -137,44 +178,65 @@ public class VoiceCommandHelper {
 
                 @Override
                 public void onEndOfSpeech() {
+
+                    if (!isCurrent(currentGeneration)) {
+                        return;
+                    }
+
+                    listening = false;
                 }
 
                 @Override
                 public void onError(int error) {
 
-                    if (!running || destroyed) {
+                    if (!isCurrent(currentGeneration)) {
                         return;
                     }
 
-                    scheduleRestart();
+                    listening = false;
 
-                    if (currentListener != null) {
-                        currentListener.onError(
-                                "Awaaz samajh nahi aayi. Dobara sun raha hoon."
-                        );
-                    }
+                    String message = getErrorMessage(error);
+
+                    sendError(message);
+
+                    stopInternal();
                 }
 
                 @Override
                 public void onResults(Bundle results) {
 
-                    if (!running || destroyed) {
+                    if (!isCurrent(currentGeneration)) {
                         return;
                     }
+
+                    listening = false;
 
                     ArrayList<String> matches =
                             results.getStringArrayList(
                                     SpeechRecognizer.RESULTS_RECOGNITION
                             );
 
-                    if (matches != null && !matches.isEmpty()) {
+                    String command = null;
 
-                        if (currentListener != null) {
-                            currentListener.onCommand(matches.get(0));
-                        }
+                    if (matches != null && !matches.isEmpty()) {
+                        command = matches.get(0);
                     }
 
-                    scheduleRestart();
+                    if (command != null && !command.trim().isEmpty()) {
+
+                        Listener currentListener = listener;
+
+                        stopInternal();
+
+                        if (currentListener != null) {
+                            currentListener.onCommand(command.trim());
+                        }
+
+                    } else {
+
+                        sendError("आवाज समझ नहीं आई। दोबारा बोलें");
+                        stopInternal();
+                    }
                 }
 
                 @Override
@@ -182,10 +244,7 @@ public class VoiceCommandHelper {
                 }
 
                 @Override
-                public void onEvent(
-                        int eventType,
-                        Bundle params
-                ) {
+                public void onEvent(int eventType, Bundle params) {
                 }
             });
 
@@ -210,7 +269,12 @@ public class VoiceCommandHelper {
 
             intent.putExtra(
                     RecognizerIntent.EXTRA_PARTIAL_RESULTS,
-                    true
+                    false
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_MAX_RESULTS,
+                    5
             );
 
             intent.putExtra(
@@ -222,48 +286,113 @@ public class VoiceCommandHelper {
 
         } catch (Exception e) {
 
-            scheduleRestart();
-
-            if (currentListener != null) {
-                currentListener.onError(
-                        "Voice start nahi ho paya"
-                );
-            }
+            sendError("Voice Recognition शुरू नहीं हो पाया");
+            stopInternal();
         }
     }
 
-    private void scheduleRestart() {
+    private boolean isCurrent(int callbackGeneration) {
 
-        handler.removeCallbacks(restartTask);
+        return !stopped
+                && callbackGeneration == generation
+                && recognizer != null;
+    }
 
-        if (running && !destroyed) {
-            handler.postDelayed(restartTask, 800);
+    private String getErrorMessage(int error) {
+
+        switch (error) {
+
+            case SpeechRecognizer.ERROR_AUDIO:
+                return "Microphone में समस्या है";
+
+            case SpeechRecognizer.ERROR_CLIENT:
+                return "Voice Recognition में समस्या हुई";
+
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                return "Microphone Permission नहीं मिली";
+
+            case SpeechRecognizer.ERROR_NETWORK:
+                return "Internet या Network में समस्या है";
+
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                return "Network Timeout हुआ";
+
+            case SpeechRecognizer.ERROR_NO_MATCH:
+                return "आवाज समझ नहीं आई";
+
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                return "Voice Recognition अभी व्यस्त है";
+
+            case SpeechRecognizer.ERROR_SERVER:
+                return "Speech Recognition Server में समस्या है";
+
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                return "कोई आवाज नहीं मिली";
+
+            default:
+                return "Voice Recognition Error: " + error;
+        }
+    }
+
+    private void sendError(String message) {
+
+        Listener currentListener = listener;
+
+        if (currentListener != null) {
+            currentListener.onError(message);
         }
     }
 
     public void stop() {
 
-        running = false;
-        handler.removeCallbacks(restartTask);
+        runOnMain(this::stopInternal);
+    }
+
+    private void stopInternal() {
+
+        stopped = true;
+        listening = false;
+
+        handler.removeCallbacksAndMessages(null);
+
+        destroyRecognizer();
+
+        listener = null;
+        contextReference = null;
+    }
+
+    private void destroyRecognizer() {
+
+        generation++;
 
         if (recognizer != null) {
 
             try {
                 recognizer.cancel();
+            } catch (Exception ignored) {
+            }
+
+            try {
                 recognizer.destroy();
             } catch (Exception ignored) {
             }
 
             recognizer = null;
         }
+
+        listening = false;
     }
 
-    public void destroy() {
+    public boolean isListening() {
+        return listening && !stopped;
+    }
 
-        stop();
+    private void runOnMain(Runnable runnable) {
 
-        destroyed = true;
-        currentListener = null;
-        appContext = null;
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runnable.run();
+        } else {
+            handler.post(runnable);
+        }
     }
 }
