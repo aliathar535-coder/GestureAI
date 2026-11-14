@@ -6,7 +6,6 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -24,8 +23,11 @@ import org.json.JSONObject;
 public class HandGestureActivity extends Activity {
 
     private static final int CAMERA_PERMISSION = 501;
+    private static final long ACTION_COOLDOWN = 3000;
 
     private HandCameraController controller;
+    private GestureActionExecutor actionExecutor;
+
     private PreviewView previewView;
     private TextView status;
     private EditText gestureName;
@@ -34,9 +36,14 @@ public class HandGestureActivity extends Activity {
 
     private boolean cameraStarted = false;
 
+    private String lastExecutedAction = "";
+    private long lastActionTime = 0;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        actionExecutor = new GestureActionExecutor(this);
 
         createScreen();
 
@@ -59,7 +66,6 @@ public class HandGestureActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(16, 16, 16, 16);
-
         root.setBackgroundColor(0xFF101827);
 
         TextView heading = new TextView(this);
@@ -110,8 +116,11 @@ public class HandGestureActivity extends Activity {
                 return;
             }
 
-            String name = gestureName.getText().toString().trim();
-            String action = gestureAction.getText().toString().trim();
+            String name =
+                    gestureName.getText().toString().trim();
+
+            String action =
+                    gestureAction.getText().toString().trim();
 
             if (name.isEmpty() || action.isEmpty()) {
                 showMessage("Naam aur action dono likhein");
@@ -119,7 +128,8 @@ public class HandGestureActivity extends Activity {
             }
 
             if (controller.startLearning(name, action)) {
-                status.setText("Ab camera ke saamne 5 baar ek hi ishara dikhayein");
+                status.setText(
+                        "Ab camera ke saamne 5 baar ek hi ishara dikhayein");
             } else {
                 showMessage("Learning shuru nahi hui");
             }
@@ -150,7 +160,8 @@ public class HandGestureActivity extends Activity {
 
         root.addView(scroll,
                 new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        0, 1));
 
         setContentView(root);
 
@@ -163,7 +174,8 @@ public class HandGestureActivity extends Activity {
         button.setText(title);
         button.setTextColor(0xFFFFFFFF);
         button.setBackgroundTintList(
-                android.content.res.ColorStateList.valueOf(0xFF1769AA));
+                android.content.res.ColorStateList.valueOf(
+                        0xFF1769AA));
 
         return button;
     }
@@ -180,8 +192,10 @@ public class HandGestureActivity extends Activity {
                     public void onLearningProgress(int count) {
 
                         if (count == 5) {
-                            status.setText("Gesture saved successfully!");
+                            status.setText(
+                                    "Gesture saved successfully!");
                             refreshSavedList();
+
                         } else if (count >= 0) {
                             status.setText(
                                     "Learning sample: " + count + "/5");
@@ -192,9 +206,7 @@ public class HandGestureActivity extends Activity {
                     public void onGestureRecognized(
                             String name, String action) {
 
-                        status.setText(
-                                "Recognized: " + name +
-                                " | Action: " + action);
+                        runRecognizedAction(name, action);
                     }
 
                     @Override
@@ -205,6 +217,36 @@ public class HandGestureActivity extends Activity {
 
         controller.start();
         cameraStarted = true;
+    }
+
+    private void runRecognizedAction(
+            String name, String action) {
+
+        long now = System.currentTimeMillis();
+
+        if (action == null || action.trim().isEmpty()) {
+            return;
+        }
+
+        if (action.equals(lastExecutedAction)
+                && now - lastActionTime < ACTION_COOLDOWN) {
+            return;
+        }
+
+        lastExecutedAction = action;
+        lastActionTime = now;
+
+        boolean success = actionExecutor.execute(action);
+
+        if (success) {
+            status.setText(
+                    "Recognized: " + name +
+                    "\nAction executed: " + action);
+        } else {
+            status.setText(
+                    "Recognized: " + name +
+                    "\nAction not completed: " + action);
+        }
     }
 
     private void refreshSavedList() {
@@ -218,11 +260,7 @@ public class HandGestureActivity extends Activity {
         if (controller != null) {
             data = controller.getSavedGestures();
         } else {
-            data = getSharedPreferences(
-                    "gesture_ai_data", MODE_PRIVATE)
-                    .contains("saved_hand_gestures")
-                    ? loadSavedData()
-                    : new JSONArray();
+            data = loadSavedData();
         }
 
         for (int i = 0; i < data.length(); i++) {
@@ -250,9 +288,12 @@ public class HandGestureActivity extends Activity {
 
                 new android.app.AlertDialog.Builder(this)
                         .setTitle("Remove Gesture?")
-                        .setMessage("Kya aap " + name + " ko hatana chahte hain?")
+                        .setMessage(
+                                "Kya aap " + name +
+                                " ko hatana chahte hain?")
                         .setNegativeButton("NO", null)
-                        .setPositiveButton("YES", (dialog, which) -> {
+                        .setPositiveButton("YES",
+                                (dialog, which) -> {
 
                             boolean removed = controller != null
                                     && controller.removeGesture(name);
@@ -260,6 +301,9 @@ public class HandGestureActivity extends Activity {
                             if (removed) {
                                 showMessage("Gesture removed");
                                 refreshSavedList();
+                            } else {
+                                showMessage(
+                                        "Gesture remove nahi hua");
                             }
                         })
                         .show();
@@ -284,7 +328,8 @@ public class HandGestureActivity extends Activity {
     }
 
     private void showMessage(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        Toast.makeText(
+                this, message, Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -299,8 +344,11 @@ public class HandGestureActivity extends Activity {
         if (requestCode == CAMERA_PERMISSION) {
 
             if (grantResults.length > 0 &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    grantResults[0] ==
+                    PackageManager.PERMISSION_GRANTED) {
+
                 startCamera();
+
             } else {
                 status.setText("Camera permission required");
             }
@@ -310,6 +358,8 @@ public class HandGestureActivity extends Activity {
     @Override
     protected void onDestroy() {
 
+        cameraStarted = false;
+
         if (controller != null) {
             controller.shutdown();
             controller = null;
@@ -317,4 +367,4 @@ public class HandGestureActivity extends Activity {
 
         super.onDestroy();
     }
-  }
+}
