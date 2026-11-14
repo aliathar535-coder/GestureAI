@@ -6,6 +6,8 @@ import android.accessibilityservice.GestureDescription;
 import android.graphics.Path;
 import android.graphics.Point;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Display;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
@@ -15,6 +17,9 @@ public class GestureAccessibilityService extends AccessibilityService {
     private static GestureAccessibilityService instance;
 
     private static volatile String foregroundPackage = "";
+
+    private static final Handler mainHandler =
+            new Handler(Looper.getMainLooper());
 
     @Override
     protected void onServiceConnected() {
@@ -38,17 +43,13 @@ public class GestureAccessibilityService extends AccessibilityService {
         CharSequence packageName = event.getPackageName();
 
         if (packageName != null &&
-                !getInstancePackageName().contentEquals(packageName)) {
+                !getPackageName().contentEquals(packageName)) {
 
             foregroundPackage = packageName.toString();
         }
     }
 
-    private String getInstancePackageName() {
-        return getPackageName();
-    }
-
-    public static boolean performGlobalAction(int action) {
+    public static boolean runGlobalAction(int action) {
 
         GestureAccessibilityService service = instance;
 
@@ -69,13 +70,11 @@ public class GestureAccessibilityService extends AccessibilityService {
         Path path = new Path();
         path.moveTo(x, y);
 
-        GestureDescription.StrokeDescription stroke =
-                new GestureDescription.StrokeDescription(
-                        path, 0, 100);
-
         GestureDescription gesture =
                 new GestureDescription.Builder()
-                        .addStroke(stroke)
+                        .addStroke(
+                                new GestureDescription.StrokeDescription(
+                                        path, 0, 100))
                         .build();
 
         instance.dispatchGesture(gesture, null, null);
@@ -88,13 +87,11 @@ public class GestureAccessibilityService extends AccessibilityService {
         Path path = new Path();
         path.moveTo(x, y);
 
-        GestureDescription.StrokeDescription stroke =
-                new GestureDescription.StrokeDescription(
-                        path, 0, 900);
-
         GestureDescription gesture =
                 new GestureDescription.Builder()
-                        .addStroke(stroke)
+                        .addStroke(
+                                new GestureDescription.StrokeDescription(
+                                        path, 0, 900))
                         .build();
 
         instance.dispatchGesture(gesture, null, null);
@@ -102,12 +99,12 @@ public class GestureAccessibilityService extends AccessibilityService {
 
     public static void doubleTap(float x, float y) {
 
+        if (!canDispatch()) return;
+
         tap(x, y);
 
-        if (instance != null) {
-            instance.getMainThreadHandler().postDelayed(
-                    () -> tap(x, y), 180);
-        }
+        mainHandler.postDelayed(
+                () -> tap(x, y), 250);
     }
 
     public static void swipe(
@@ -123,16 +120,14 @@ public class GestureAccessibilityService extends AccessibilityService {
         path.moveTo(startX, startY);
         path.lineTo(endX, endY);
 
-        long safeDuration = Math.max(
-                100, Math.min(duration, 5000));
-
-        GestureDescription.StrokeDescription stroke =
-                new GestureDescription.StrokeDescription(
-                        path, 0, safeDuration);
+        long safeDuration =
+                Math.max(100, Math.min(duration, 5000));
 
         GestureDescription gesture =
                 new GestureDescription.Builder()
-                        .addStroke(stroke)
+                        .addStroke(
+                                new GestureDescription.StrokeDescription(
+                                        path, 0, safeDuration))
                         .build();
 
         instance.dispatchGesture(gesture, null, null);
@@ -146,16 +141,18 @@ public class GestureAccessibilityService extends AccessibilityService {
 
         if (service == null) return false;
 
-        WindowManager wm = service.getSystemService(
-                WindowManager.class);
+        WindowManager wm =
+                service.getSystemService(WindowManager.class);
 
         if (wm == null) return false;
 
         Display display = wm.getDefaultDisplay();
+
         Point size = new Point();
         display.getRealSize(size);
 
         float centerX = size.x / 2f;
+
         float startY = up ? size.y * 0.70f : size.y * 0.30f;
         float endY = up ? size.y * 0.30f : size.y * 0.70f;
 
