@@ -1,9 +1,11 @@
 
 package com.gestureai.demo;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -33,56 +35,54 @@ public class VoiceForegroundService extends Service {
 
     private static final int NOTIFICATION_ID = 501;
 
-    private SpeechRecognizer recognizer;
-    private Handler handler;
+    private final Handler handler =
+            new Handler(Looper.getMainLooper());
 
-    private boolean running = false;
+    private SpeechRecognizer speechRecognizer;
+
+    private boolean serviceRunning = false;
     private boolean listening = false;
-    private boolean starting = false;
+    private boolean destroyed = false;
+    private boolean foregroundStarted = false;
 
-    private int restartDelay = 1500;
+    private int retryCount = 0;
+    private int generation = 0;
 
-    private final Runnable restartListener = () -> {
-        if (running && !listening && !starting) {
-            startListening();
-        }
-    };
+    private static final long MIN_RETRY_DELAY = 1500;
+    private static final long MAX_RETRY_DELAY = 8000;
 
     @Override
     public void onCreate() {
         super.onCreate();
 
-        handler = new Handler(Looper.getMainLooper());
         createNotificationChannel();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
 
-        if (intent == null) {
+        if (intent != null
+                && ACTION_STOP.equals(intent.getAction())) {
+
             stopVoice();
+            stopSelf();
             return START_NOT_STICKY;
         }
 
-        if (ACTION_STOP.equals(intent.getAction())) {
-            stopVoice();
-            return START_NOT_STICKY;
-        }
+        startVoice();
 
-        if (ACTION_START.equals(intent.getAction())) {
-            startVoice();
-        }
-
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
 
     private void startVoice() {
 
-        if (running) return;
+        if (destroyed || serviceRunning) {
+            return;
+        }
 
-        if (checkSelfPermission(
-                android.Manifest.permission.RECORD_AUDIO
-        ) != PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+
             stopSelf();
             return;
         }
@@ -94,62 +94,145 @@ public class VoiceForegroundService extends Service {
 
         try {
 
-            Notification notification = buildNotification();
+            startVoiceForeground();
 
-            if (Build.VERSION.SDK_INT >= 30) {
-
-                startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                );
-
-            } else {
-
-                startForeground(
-                        NOTIFICATION_ID,
-                        notification
-                );
-            }
-
-            running = true;
-            restartDelay = 1500;
+            serviceRunning = true;
+            retryCount = 0;
 
             startListening();
 
         } catch (Exception e) {
 
-            running = false;
+            serviceRunning = false;
             stopForeground(true);
             stopSelf();
         }
     }
 
+    private void startVoiceForeground() {
+
+        Notification notification = buildNotification();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
+            startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            );
+
+        } else {
+
+            startForeground(
+                    NOTIFICATION_ID,
+                    notification
+            );
+        }
+
+        foregroundStarted = true;
+    }
+
+    private void createNotificationChannel() {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+            NotificationChannel channel =
+                    new NotificationChannel(
+                            CHANNEL_ID,
+                            "Gesture AI Voice Control",
+                            NotificationManager.IMPORTANCE_LOW
+                    );
+
+            channel.setDescription(
+                    "Voice recognition is active"
+            );
+
+            NotificationManager manager =
+                    getSystemService(NotificationManager.class);
+
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private Notification buildNotification() {
+
+        Intent stopIntent = new Intent(
+                this,
+                VoiceForegroundService.class
+        );
+
+        stopIntent.setAction(ACTION_STOP);
+
+        PendingIntent stopPendingIntent =
+                PendingIntent.getService(
+                        this,
+                        502,
+                        stopIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT
+                                | PendingIntent.FLAG_IMMUTABLE
+                );
+
+        Notification.Builder builder;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+            builder = new Notification.Builder(this, CHANNEL_ID);
+
+        } else {
+
+            builder = new Notification.Builder(this);
+        }
+
+        return builder
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("Gesture AI Voice Control")
+                .setContentText("Voice commands सुन रहा है")
+                .setOngoing(true)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .addAction(
+                        android.R.drawable.ic_media_pause,
+                        "बंद करें",
+                        stopPendingIntent
+                )
+                .build();
+    }
+
     private void startListening() {
 
-        if (!running || listening || starting) return;
+        if (!serviceRunning || destroyed || listening) {
+            return;
+        }
 
-        starting = true;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            stopVoice();
+            stopSelf();
+            return;
+        }
 
         try {
 
-            if (recognizer != null) {
-                recognizer.cancel();
-                recognizer.destroy();
-                recognizer = null;
-            }
+            destroyRecognizer();
 
-            recognizer =
+            final int currentGeneration = ++generation;
+
+            speechRecognizer =
                     SpeechRecognizer.createSpeechRecognizer(this);
 
-            recognizer.setRecognitionListener(
+            speechRecognizer.setRecognitionListener(
                     new RecognitionListener() {
 
                 @Override
                 public void onReadyForSpeech(Bundle params) {
-                    starting = false;
+
+                    if (currentGeneration != generation) {
+                        return;
+                    }
+
                     listening = true;
-                    restartDelay = 1500;
                 }
 
                 @Override
@@ -166,42 +249,38 @@ public class VoiceForegroundService extends Service {
 
                 @Override
                 public void onEndOfSpeech() {
+
+                    if (currentGeneration != generation) {
+                        return;
+                    }
+
                     listening = false;
                 }
 
                 @Override
                 public void onError(int error) {
 
-                    starting = false;
-                    listening = false;
-
-                    if (error ==
-                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                        stopVoice();
+                    if (currentGeneration != generation) {
                         return;
                     }
 
-                    if (error == SpeechRecognizer.ERROR_CLIENT) {
-                        restartDelay = 3000;
-                    } else if (error ==
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                        restartDelay = 4000;
-                    } else {
-                        restartDelay = Math.min(
-                                restartDelay + 1000,
-                                8000
-                        );
+                    listening = false;
+
+                    if (!serviceRunning || destroyed) {
+                        return;
                     }
 
-                    scheduleRestart();
+                    scheduleRestart(error);
                 }
 
                 @Override
                 public void onResults(Bundle results) {
 
-                    starting = false;
+                    if (currentGeneration != generation) {
+                        return;
+                    }
+
                     listening = false;
-                    restartDelay = 1500;
 
                     ArrayList<String> matches =
                             results.getStringArrayList(
@@ -212,15 +291,21 @@ public class VoiceForegroundService extends Service {
 
                         String command = matches.get(0);
 
-                        if (isStopCommand(command)) {
-                            stopVoice();
-                            return;
-                        }
+                        if (command != null && !command.trim().isEmpty()) {
 
-                        sendCommand(command);
+                            handleVoiceCommand(command.trim());
+                        }
                     }
 
-                    scheduleRestart();
+                    if (serviceRunning && !destroyed) {
+
+                        retryCount = 0;
+
+                        handler.postDelayed(
+                                () -> startListening(),
+                                500
+                        );
+                    }
                 }
 
                 @Override
@@ -228,209 +313,188 @@ public class VoiceForegroundService extends Service {
                 }
 
                 @Override
-                public void onEvent(
-                        int eventType,
-                        Bundle params) {
+                public void onEvent(int eventType, Bundle params) {
                 }
             });
 
-            Intent speechIntent = new Intent(
+            Intent recognitionIntent = new Intent(
                     RecognizerIntent.ACTION_RECOGNIZE_SPEECH
             );
 
-            speechIntent.putExtra(
+            recognitionIntent.putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             );
 
-            speechIntent.putExtra(
+            recognitionIntent.putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE,
                     "hi-IN"
             );
 
-            speechIntent.putExtra(
+            recognitionIntent.putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
                     "hi-IN"
             );
 
-            speechIntent.putExtra(
+            recognitionIntent.putExtra(
                     RecognizerIntent.EXTRA_PARTIAL_RESULTS,
                     false
             );
 
-            speechIntent.putExtra(
+            recognitionIntent.putExtra(
+                    RecognizerIntent.EXTRA_MAX_RESULTS,
+                    3
+            );
+
+            recognitionIntent.putExtra(
                     RecognizerIntent.EXTRA_PREFER_OFFLINE,
                     false
             );
 
-            recognizer.startListening(speechIntent);
+            speechRecognizer.startListening(recognitionIntent);
 
         } catch (Exception e) {
 
-            starting = false;
             listening = false;
-
-            restartDelay = Math.min(
-                    restartDelay + 1000,
-                    8000
-            );
-
-            scheduleRestart();
+            scheduleRestart(-1);
         }
     }
 
-    private void scheduleRestart() {
+    private void handleVoiceCommand(String command) {
 
-        if (running && handler != null) {
+        if (command == null || command.trim().isEmpty()) {
+            return;
+        }
 
-            handler.removeCallbacks(restartListener);
+        String normalized = command
+                .toLowerCase(Locale.ROOT)
+                .trim();
 
-            handler.postDelayed(
-                    restartListener,
-                    restartDelay
+        if (isStopCommand(normalized)) {
+
+            stopVoice();
+            stopSelf();
+            return;
+        }
+
+        try {
+
+            Intent intent = new Intent(
+                    "com.gestureai.demo.VOICE_COMMAND"
             );
+
+            intent.setPackage(getPackageName());
+
+            intent.putExtra(
+                    "voice_command",
+                    command
+            );
+
+            startService(intent);
+
+        } catch (Exception e) {
+            // Recognition continues even if command delivery fails.
         }
     }
 
     private boolean isStopCommand(String command) {
 
-        if (command == null) return false;
-
-        String text = normalize(command);
-
-        return text.contains("gestureaiband")
-                || text.contains("gestureaistop")
-                || text.contains("voicecontrolband")
-                || text.contains("stoplistening")
-                || text.contains("stopvoice")
-                || text.contains("बंदहोजाओ")
-                || text.contains("सुननाबंदकरो")
-                || text.contains("आवाजबंदकरो")
-                || text.contains("वॉइसबंदकरो")
-                || text.contains("वॉइसकंट्रोलबंदकरो");
-    }
-
-    private String normalize(String command) {
-
-        if (command == null) return "";
-
-        return command.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9\\u0900-\\u097F]", "");
-    }
-
-    private void sendCommand(String command) {
-
-        if (!running || command == null) return;
-
-        Intent intent = new Intent(
-                this,
-                FloatingOverlayService.class
-        );
-
-        intent.setAction(
-                "com.gestureai.demo.VOICE_COMMAND"
-        );
-
-        intent.putExtra(
-                "voice_command",
-                command
-        );
-
-        try {
-            startService(intent);
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (command == null) {
+            return false;
         }
+
+        String text = command.toLowerCase(Locale.ROOT).trim();
+
+        return text.equals("stop")
+                || text.equals("stop listening")
+                || text.equals("stop voice")
+                || text.equals("stop voice control")
+                || text.equals("gesture ai stop")
+                || text.equals("बंद करो")
+                || text.equals("बंद कर दो")
+                || text.equals("आवाज बंद करो")
+                || text.equals("वॉइस बंद करो")
+                || text.equals("वॉइस कंट्रोल बंद करो")
+                || text.equals("जेस्चर ए आई बंद करो");
     }
 
-    private void createNotificationChannel() {
+    private void scheduleRestart(int error) {
 
-        if (Build.VERSION.SDK_INT >= 26) {
+        if (!serviceRunning || destroyed) {
+            return;
+        }
 
-            NotificationChannel channel =
-                    new NotificationChannel(
-                            CHANNEL_ID,
-                            "Gesture AI Voice Control",
-                            NotificationManager.IMPORTANCE_LOW
-                    );
+        handler.removeCallbacksAndMessages(null);
 
-            channel.setDescription(
-                    "Gesture AI voice control is active"
-            );
+        listening = false;
 
-            NotificationManager manager =
-                    getSystemService(NotificationManager.class);
+        destroyRecognizer();
 
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
+        retryCount++;
+
+        long delay = Math.min(
+                MIN_RETRY_DELAY * retryCount,
+                MAX_RETRY_DELAY
+        );
+
+        if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+            delay = MAX_RETRY_DELAY;
+        }
+
+        handler.postDelayed(
+                () -> {
+
+                    if (serviceRunning && !destroyed) {
+                        startListening();
+                    }
+                },
+                delay
+        );
+    }
+
+    private void destroyRecognizer() {
+
+        generation++;
+
+        if (speechRecognizer != null) {
+
+            try {
+                speechRecognizer.cancel();
+            } catch (Exception ignored) {
             }
-        }
-    }
 
-    private Notification buildNotification() {
+            try {
+                speechRecognizer.destroy();
+            } catch (Exception ignored) {
+            }
 
-        Notification.Builder builder;
-
-        if (Build.VERSION.SDK_INT >= 26) {
-            builder = new Notification.Builder(this, CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
+            speechRecognizer = null;
         }
 
-        return builder
-                .setContentTitle("Gesture AI Voice Control")
-                .setContentText("Voice control चालू है")
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setOngoing(true)
-                .build();
+        listening = false;
     }
 
     private void stopVoice() {
 
-        running = false;
+        serviceRunning = false;
         listening = false;
-        starting = false;
+        destroyed = true;
 
-        if (handler != null) {
-            handler.removeCallbacksAndMessages(null);
+        handler.removeCallbacksAndMessages(null);
+
+        destroyRecognizer();
+
+        if (foregroundStarted) {
+
+            stopForeground(true);
+            foregroundStarted = false;
         }
-
-        if (recognizer != null) {
-
-            try {
-                recognizer.cancel();
-                recognizer.destroy();
-            } catch (Exception ignored) {
-            }
-
-            recognizer = null;
-        }
-
-        stopForeground(true);
-        stopSelf();
     }
 
     @Override
     public void onDestroy() {
 
-        running = false;
-        listening = false;
-        starting = false;
-
-        if (handler != null) {
-            handler.removeCallbacksAndMessages(null);
-        }
-
-        if (recognizer != null) {
-
-            try {
-                recognizer.cancel();
-                recognizer.destroy();
-            } catch (Exception ignored) {
-            }
-
-            recognizer = null;
-        }
+        stopVoice();
 
         super.onDestroy();
     }
@@ -439,4 +503,4 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-    }
+        }
