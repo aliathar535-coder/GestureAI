@@ -20,7 +20,10 @@ public class CustomVoiceCommandStore {
 
     public CustomVoiceCommandStore(Context context) {
         prefs = context.getApplicationContext()
-                .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+                .getSharedPreferences(
+                        PREF_NAME,
+                        Context.MODE_PRIVATE
+                );
     }
 
     private String normalize(String value) {
@@ -50,34 +53,48 @@ public class CustomVoiceCommandStore {
             String phrase,
             String action
     ) {
-        if (phrase == null || action == null) return false;
+        if (phrase == null || action == null) {
+            return false;
+        }
 
         phrase = phrase.trim();
         action = action.trim();
 
-        if (phrase.isEmpty() || action.isEmpty()) return false;
+        if (phrase.isEmpty() || action.isEmpty()) {
+            return false;
+        }
 
         String newPhrase = normalize(phrase);
+
+        if (newPhrase.isEmpty()) {
+            return false;
+        }
+
         JSONArray oldCommands = readCommands();
         JSONArray updated = new JSONArray();
 
         try {
             for (int i = 0; i < oldCommands.length(); i++) {
+
                 JSONObject item = oldCommands.getJSONObject(i);
 
-                if (!normalize(item.optString("phrase"))
-                        .equals(newPhrase)) {
+                String existingPhrase =
+                        normalize(item.optString("phrase"));
+
+                if (!existingPhrase.equals(newPhrase)) {
                     updated.put(item);
                 }
             }
 
             JSONObject command = new JSONObject();
+
             command.put("phrase", phrase);
             command.put("action", action);
 
             updated.put(command);
 
             writeCommands(updated);
+
             return true;
 
         } catch (Exception e) {
@@ -86,25 +103,37 @@ public class CustomVoiceCommandStore {
     }
 
     public synchronized boolean removeCommand(String phrase) {
-        if (phrase == null || phrase.trim().isEmpty()) return false;
+
+        if (phrase == null || phrase.trim().isEmpty()) {
+            return false;
+        }
 
         String target = normalize(phrase);
+
         JSONArray oldCommands = readCommands();
         JSONArray updated = new JSONArray();
+
         boolean removed = false;
 
         try {
             for (int i = 0; i < oldCommands.length(); i++) {
+
                 JSONObject item = oldCommands.getJSONObject(i);
 
-                if (normalize(item.optString("phrase")).equals(target)) {
+                String existingPhrase =
+                        normalize(item.optString("phrase"));
+
+                if (existingPhrase.equals(target)) {
                     removed = true;
                 } else {
                     updated.put(item);
                 }
             }
 
-            writeCommands(updated);
+            if (removed) {
+                writeCommands(updated);
+            }
+
             return removed;
 
         } catch (Exception e) {
@@ -113,39 +142,56 @@ public class CustomVoiceCommandStore {
     }
 
     public synchronized String findAction(String spokenCommand) {
+
         String spoken = normalize(spokenCommand);
 
-        if (spoken.isEmpty()) return null;
+        if (spoken.isEmpty()) {
+            return null;
+        }
 
         JSONArray commands = readCommands();
 
         try {
+
             // पहले पूरा वाक्य मिलाएँ
             for (int i = 0; i < commands.length(); i++) {
+
                 JSONObject item = commands.getJSONObject(i);
 
-                String phrase = normalize(item.optString("phrase"));
+                String phrase =
+                        normalize(item.optString("phrase"));
 
                 if (!phrase.isEmpty() && spoken.equals(phrase)) {
                     return item.optString("action", null);
                 }
             }
 
-            // फिर बोले गए वाक्य के अंदर सेव कमांड खोजें
+            // अब सबसे लंबा मिलता-जुलता कमांड खोजें
+            String bestAction = null;
+            int bestLength = 0;
+
             for (int i = 0; i < commands.length(); i++) {
+
                 JSONObject item = commands.getJSONObject(i);
 
-                String phrase = normalize(item.optString("phrase"));
+                String phrase =
+                        normalize(item.optString("phrase"));
 
-                if (!phrase.isEmpty() && spoken.contains(phrase)) {
-                    return item.optString("action", null);
+                if (!phrase.isEmpty()
+                        && spoken.contains(phrase)
+                        && phrase.length() > bestLength) {
+
+                    bestLength = phrase.length();
+
+                    bestAction = item.optString("action", null);
                 }
             }
 
-        } catch (Exception ignored) {
-        }
+            return bestAction;
 
-        return null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public synchronized String getCommandsJson() {
