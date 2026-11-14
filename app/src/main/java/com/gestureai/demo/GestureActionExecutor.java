@@ -3,15 +3,17 @@ package com.gestureai.demo;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 
+import java.util.Locale;
+
 public class GestureActionExecutor {
 
     private final Context context;
-
     private static boolean torchOn = false;
 
     public GestureActionExecutor(Context context) {
@@ -20,104 +22,126 @@ public class GestureActionExecutor {
 
     public boolean execute(String action) {
 
-        if (action == null) return false;
+        if (action == null || action.trim().isEmpty()) {
+            return false;
+        }
 
-        String command = action.trim().toLowerCase();
+        String command = action.trim().toLowerCase(Locale.ROOT);
 
         switch (command) {
 
             case "volume up":
             case "volume badhao":
-                adjustVolume(AudioManager.ADJUST_RAISE);
-                return true;
+            case "आवाज बढ़ाओ":
+                return adjustVolume(AudioManager.ADJUST_RAISE);
 
             case "volume down":
             case "volume ghatao":
-                adjustVolume(AudioManager.ADJUST_LOWER);
-                return true;
+            case "आवाज कम करो":
+                return adjustVolume(AudioManager.ADJUST_LOWER);
 
             case "mute":
             case "volume mute":
-                adjustVolume(AudioManager.ADJUST_MUTE);
-                return true;
+            case "आवाज बंद":
+                return adjustVolume(AudioManager.ADJUST_MUTE);
 
             case "back":
             case "wapas":
+            case "पीछे":
                 return runGlobalAction(
-                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+                );
 
             case "home":
             case "ghar":
+            case "होम":
                 return runGlobalAction(
-                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME);
+                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME
+                );
 
             case "recent":
             case "recent apps":
                 return runGlobalAction(
-                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS);
+                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS
+                );
 
             case "scroll up":
             case "upar scroll":
+            case "ऊपर स्क्रॉल":
                 return GestureAccessibilityService.scroll(true);
 
             case "scroll down":
             case "neeche scroll":
+            case "नीचे स्क्रॉल":
                 return GestureAccessibilityService.scroll(false);
 
-            case "flashlight":
-            case "torch":
             case "torch on":
+            case "flashlight on":
+            case "torch chalu":
+            case "टॉर्च चालू":
+                return setTorch(true);
+
             case "torch off":
-                return toggleTorch();
+            case "flashlight off":
+            case "torch band":
+            case "टॉर्च बंद":
+                return setTorch(false);
+
+            case "torch":
+            case "flashlight":
+                return setTorch(!torchOn);
 
             default:
                 return openApp(command);
         }
     }
 
-    private void adjustVolume(int direction) {
+    private boolean adjustVolume(int direction) {
 
-        AudioManager audio = (AudioManager)
-            context.getSystemService(Context.AUDIO_SERVICE);
+        try {
+            AudioManager audio = (AudioManager)
+                context.getSystemService(Context.AUDIO_SERVICE);
 
-        if (audio != null) {
+            if (audio == null) return false;
+
             audio.adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
                 direction,
                 AudioManager.FLAG_SHOW_UI
             );
+
+            return true;
+
+        } catch (Exception e) {
+            return false;
         }
     }
 
     private boolean runGlobalAction(int action) {
-
         return GestureAccessibilityService.runGlobalAction(action);
     }
 
-    private boolean toggleTorch() {
+    private boolean setTorch(boolean enabled) {
 
-        CameraManager cameraManager =
-            (CameraManager) context.getSystemService(
-                Context.CAMERA_SERVICE);
+        CameraManager manager = (CameraManager)
+            context.getSystemService(Context.CAMERA_SERVICE);
 
-        if (cameraManager == null) return false;
+        if (manager == null) return false;
 
         try {
-            for (String cameraId : cameraManager.getCameraIdList()) {
+            for (String cameraId : manager.getCameraIdList()) {
 
                 CameraCharacteristics characteristics =
-                    cameraManager.getCameraCharacteristics(cameraId);
+                    manager.getCameraCharacteristics(cameraId);
 
                 Boolean hasFlash = characteristics.get(
-                    CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                    CameraCharacteristics.FLASH_INFO_AVAILABLE
+                );
 
                 if (Boolean.TRUE.equals(hasFlash)) {
 
-                    boolean newState = !torchOn;
-
-                    cameraManager.setTorchMode(cameraId, newState);
-
-                    torchOn = newState;
+                    manager.setTorchMode(cameraId, enabled);
+                    torchOn = enabled;
 
                     return true;
                 }
@@ -126,7 +150,6 @@ public class GestureActionExecutor {
         } catch (CameraAccessException |
                  SecurityException |
                  IllegalArgumentException e) {
-
             return false;
         }
 
@@ -140,7 +163,11 @@ public class GestureActionExecutor {
             .replace(" kholna", "")
             .replace(" open", "")
             .replace(" start", "")
+            .replace(" खोलो", "")
+            .replace(" खोलना", "")
             .trim();
+
+        if (appName.isEmpty()) return false;
 
         String packageName;
 
@@ -176,14 +203,19 @@ public class GestureActionExecutor {
                 break;
         }
 
-        Intent launcher = context.getPackageManager()
-            .getLaunchIntentForPackage(packageName);
+        try {
+            Intent launcher = context.getPackageManager()
+                .getLaunchIntentForPackage(packageName);
 
-        if (launcher == null) return false;
+            if (launcher == null) return false;
 
-        launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        context.startActivity(launcher);
+            launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(launcher);
 
-        return true;
+            return true;
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
