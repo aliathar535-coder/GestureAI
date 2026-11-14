@@ -40,6 +40,8 @@ public class VoiceForegroundService extends Service {
     private boolean listening = false;
     private boolean starting = false;
 
+    private int restartDelay = 1500;
+
     private final Runnable restartListener = () -> {
         if (running && !listening && !starting) {
             startListening();
@@ -111,6 +113,8 @@ public class VoiceForegroundService extends Service {
             }
 
             running = true;
+            restartDelay = 1500;
+
             startListening();
 
         } catch (Exception e) {
@@ -147,6 +151,7 @@ public class VoiceForegroundService extends Service {
                 public void onReadyForSpeech(Bundle params) {
                     starting = false;
                     listening = true;
+                    restartDelay = 1500;
                 }
 
                 @Override
@@ -172,6 +177,22 @@ public class VoiceForegroundService extends Service {
                     starting = false;
                     listening = false;
 
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        stopVoice();
+                        return;
+                    }
+
+                    if (error == SpeechRecognizer.ERROR_CLIENT) {
+                        restartDelay = 3000;
+                    } else if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                        restartDelay = 4000;
+                    } else {
+                        restartDelay = Math.min(
+                                restartDelay + 1000,
+                                8000
+                        );
+                    }
+
                     scheduleRestart();
                 }
 
@@ -180,6 +201,8 @@ public class VoiceForegroundService extends Service {
 
                     starting = false;
                     listening = false;
+
+                    restartDelay = 1500;
 
                     ArrayList<String> matches =
                             results.getStringArrayList(
@@ -248,6 +271,11 @@ public class VoiceForegroundService extends Service {
             starting = false;
             listening = false;
 
+            restartDelay = Math.min(
+                    restartDelay + 1000,
+                    8000
+            );
+
             scheduleRestart();
         }
     }
@@ -260,7 +288,7 @@ public class VoiceForegroundService extends Service {
 
             handler.postDelayed(
                     restartListener,
-                    1500
+                    restartDelay
             );
         }
     }
@@ -420,4 +448,5 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-            }
+                }
+
