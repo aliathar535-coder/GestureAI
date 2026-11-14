@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -22,105 +24,246 @@ public class VoiceCommandHelper {
     }
 
     private SpeechRecognizer recognizer;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private boolean running = false;
+    private boolean destroyed = false;
+
+    private Context appContext;
+    private Listener currentListener;
+
+    private String language = "hi-IN";
+
+    private final Runnable restartTask = () -> {
+        if (running && !destroyed) {
+            startListening();
+        }
+    };
 
     public void start(Context context, Listener listener) {
 
-        if (ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.RECORD_AUDIO
-        ) != PackageManager.PERMISSION_GRANTED) {
-            listener.onError("Microphone permission nahi hai");
-            return;
-        }
-
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            listener.onError("Speech recognition available nahi hai");
+        if (context == null || listener == null) {
             return;
         }
 
         stop();
 
-        recognizer = SpeechRecognizer.createSpeechRecognizer(context);
+        appContext = context.getApplicationContext();
+        currentListener = listener;
+        running = true;
+        destroyed = false;
 
-        recognizer.setRecognitionListener(new RecognitionListener() {
+        if (ContextCompat.checkSelfPermission(
+                appContext,
+                android.Manifest.permission.RECORD_AUDIO
+        ) != PackageManager.PERMISSION_GRANTED) {
 
-            @Override
-            public void onReadyForSpeech(Bundle params) {
+            running = false;
+            listener.onError("Microphone permission nahi hai");
+            return;
+        }
+
+        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+
+            running = false;
+            listener.onError(
+                    "Speech recognition available nahi hai"
+            );
+            return;
+        }
+
+        startListening();
+    }
+
+    public void setLanguage(String languageCode) {
+
+        if ("en-IN".equalsIgnoreCase(languageCode)) {
+            language = "en-IN";
+        } else {
+            language = "hi-IN";
+        }
+    }
+
+    private void startListening() {
+
+        if (!running || destroyed || appContext == null) {
+            return;
+        }
+
+        if (ContextCompat.checkSelfPermission(
+                appContext,
+                android.Manifest.permission.RECORD_AUDIO
+        ) != PackageManager.PERMISSION_GRANTED) {
+
+            running = false;
+
+            if (currentListener != null) {
+                currentListener.onError(
+                        "Microphone permission nahi hai"
+                );
             }
 
-            @Override
-            public void onBeginningOfSpeech() {
+            return;
+        }
+
+        try {
+
+            if (recognizer != null) {
+                recognizer.destroy();
+                recognizer = null;
             }
 
-            @Override
-            public void onRmsChanged(float rmsdB) {
-            }
+            recognizer =
+                    SpeechRecognizer.createSpeechRecognizer(appContext);
 
-            @Override
-            public void onBufferReceived(byte[] buffer) {
-            }
+            recognizer.setRecognitionListener(
+                    new RecognitionListener() {
 
-            @Override
-            public void onEndOfSpeech() {
-            }
-
-            @Override
-            public void onError(int error) {
-                listener.onError("Awaaz samajh nahi aayi. Dobara try karein.");
-            }
-
-            @Override
-            public void onResults(Bundle results) {
-                ArrayList<String> matches =
-                        results.getStringArrayList(
-                                SpeechRecognizer.RESULTS_RECOGNITION
-                        );
-
-                if (matches != null && !matches.isEmpty()) {
-                    listener.onCommand(matches.get(0));
+                @Override
+                public void onReadyForSpeech(Bundle params) {
                 }
+
+                @Override
+                public void onBeginningOfSpeech() {
+                }
+
+                @Override
+                public void onRmsChanged(float rmsdB) {
+                }
+
+                @Override
+                public void onBufferReceived(byte[] buffer) {
+                }
+
+                @Override
+                public void onEndOfSpeech() {
+                }
+
+                @Override
+                public void onError(int error) {
+
+                    if (!running || destroyed) {
+                        return;
+                    }
+
+                    scheduleRestart();
+
+                    if (currentListener != null) {
+                        currentListener.onError(
+                                "Awaaz samajh nahi aayi. Dobara sun raha hoon."
+                        );
+                    }
+                }
+
+                @Override
+                public void onResults(Bundle results) {
+
+                    if (!running || destroyed) {
+                        return;
+                    }
+
+                    ArrayList<String> matches =
+                            results.getStringArrayList(
+                                    SpeechRecognizer.RESULTS_RECOGNITION
+                            );
+
+                    if (matches != null && !matches.isEmpty()) {
+
+                        if (currentListener != null) {
+                            currentListener.onCommand(matches.get(0));
+                        }
+                    }
+
+                    scheduleRestart();
+                }
+
+                @Override
+                public void onPartialResults(Bundle partialResults) {
+                }
+
+                @Override
+                public void onEvent(
+                        int eventType,
+                        Bundle params
+                ) {
+                }
+            });
+
+            Intent intent = new Intent(
+                    RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE,
+                    language
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
+                    language
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_PARTIAL_RESULTS,
+                    true
+            );
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_PREFER_OFFLINE,
+                    false
+            );
+
+            recognizer.startListening(intent);
+
+        } catch (Exception e) {
+
+            scheduleRestart();
+
+            if (currentListener != null) {
+                currentListener.onError(
+                        "Voice start nahi ho paya"
+                );
             }
+        }
+    }
 
-            @Override
-            public void onPartialResults(Bundle partialResults) {
-            }
+    private void scheduleRestart() {
 
-            @Override
-            public void onEvent(int eventType, Bundle params) {
-            }
-        });
+        handler.removeCallbacks(restartTask);
 
-        Intent intent = new Intent(
-                RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-        );
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-        );
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE,
-                "hi-IN"
-        );
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
-                "hi-IN"
-        );
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_PREFER_OFFLINE,
-                true
-        );
-
-        recognizer.startListening(intent);
+        if (running && !destroyed) {
+            handler.postDelayed(restartTask, 800);
+        }
     }
 
     public void stop() {
+
+        running = false;
+        handler.removeCallbacks(restartTask);
+
         if (recognizer != null) {
-            recognizer.destroy();
+
+            try {
+                recognizer.cancel();
+                recognizer.destroy();
+            } catch (Exception ignored) {
+            }
+
             recognizer = null;
         }
+    }
+
+    public void destroy() {
+
+        stop();
+
+        destroyed = true;
+        currentListener = null;
+        appContext = null;
     }
 }
