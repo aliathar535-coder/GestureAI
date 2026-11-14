@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
@@ -37,9 +38,10 @@ public class VoiceForegroundService extends Service {
 
     private boolean running = false;
     private boolean listening = false;
+    private boolean starting = false;
 
     private final Runnable restartListener = () -> {
-        if (running && !listening) {
+        if (running && !listening && !starting) {
             startListening();
         }
     };
@@ -49,7 +51,6 @@ public class VoiceForegroundService extends Service {
         super.onCreate();
 
         handler = new Handler(Looper.getMainLooper());
-
         createNotificationChannel();
     }
 
@@ -57,7 +58,7 @@ public class VoiceForegroundService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
 
         if (intent == null) {
-            stopSelf();
+            stopVoice();
             return START_NOT_STICKY;
         }
 
@@ -77,11 +78,9 @@ public class VoiceForegroundService extends Service {
 
         if (running) return;
 
-        if (Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(
-                        android.Manifest.permission.RECORD_AUDIO
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-
+        if (checkSelfPermission(
+                android.Manifest.permission.RECORD_AUDIO
+        ) != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
             return;
         }
@@ -112,18 +111,12 @@ public class VoiceForegroundService extends Service {
             }
 
             running = true;
-
             startListening();
-
-        } catch (SecurityException e) {
-
-            running = false;
-            stopForeground(true);
-            stopSelf();
 
         } catch (Exception e) {
 
             running = false;
+
             stopForeground(true);
             stopSelf();
         }
@@ -131,11 +124,14 @@ public class VoiceForegroundService extends Service {
 
     private void startListening() {
 
-        if (!running || listening) return;
+        if (!running || listening || starting) return;
+
+        starting = true;
 
         try {
 
             if (recognizer != null) {
+
                 recognizer.cancel();
                 recognizer.destroy();
                 recognizer = null;
@@ -149,6 +145,7 @@ public class VoiceForegroundService extends Service {
 
                 @Override
                 public void onReadyForSpeech(Bundle params) {
+                    starting = false;
                     listening = true;
                 }
 
@@ -172,13 +169,16 @@ public class VoiceForegroundService extends Service {
                 @Override
                 public void onError(int error) {
 
+                    starting = false;
                     listening = false;
+
                     scheduleRestart();
                 }
 
                 @Override
                 public void onResults(Bundle results) {
 
+                    starting = false;
                     listening = false;
 
                     ArrayList<String> matches =
@@ -245,7 +245,9 @@ public class VoiceForegroundService extends Service {
 
         } catch (Exception e) {
 
+            starting = false;
             listening = false;
+
             scheduleRestart();
         }
     }
@@ -273,10 +275,12 @@ public class VoiceForegroundService extends Service {
                 || text.contains("gestureaistop")
                 || text.contains("voicecontrolband")
                 || text.contains("stoplistening")
+                || text.contains("stopvoice")
                 || text.contains("बंदहोजाओ")
                 || text.contains("सुननाबंदकरो")
                 || text.contains("आवाजबंदकरो")
-                || text.contains("वॉइसबंदकरो");
+                || text.contains("वॉइसबंदकरो")
+                || text.contains("वॉइसकंट्रोलबंदकरो");
     }
 
     private String normalize(String command) {
@@ -288,6 +292,8 @@ public class VoiceForegroundService extends Service {
     }
 
     private void sendCommand(String command) {
+
+        if (!running || command == null) return;
 
         Intent intent = new Intent(
                 this,
@@ -304,11 +310,8 @@ public class VoiceForegroundService extends Service {
         );
 
         try {
-
             startService(intent);
-
         } catch (Exception e) {
-
             e.printStackTrace();
         }
     }
@@ -367,6 +370,7 @@ public class VoiceForegroundService extends Service {
 
         running = false;
         listening = false;
+        starting = false;
 
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
@@ -377,7 +381,8 @@ public class VoiceForegroundService extends Service {
             try {
                 recognizer.cancel();
                 recognizer.destroy();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             recognizer = null;
         }
@@ -391,6 +396,7 @@ public class VoiceForegroundService extends Service {
 
         running = false;
         listening = false;
+        starting = false;
 
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
@@ -401,7 +407,8 @@ public class VoiceForegroundService extends Service {
             try {
                 recognizer.cancel();
                 recognizer.destroy();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             recognizer = null;
         }
@@ -413,4 +420,4 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-}
+            }
