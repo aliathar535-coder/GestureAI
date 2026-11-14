@@ -1,8 +1,7 @@
-
+l
 package com.gestureai.demo;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -13,6 +12,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -20,7 +20,7 @@ import androidx.core.content.ContextCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class HandGestureActivity extends Activity {
+public class HandGestureActivity extends AppCompatActivity {
 
     private static final int CAMERA_PERMISSION = 501;
     private static final long ACTION_COOLDOWN = 3000;
@@ -182,6 +182,10 @@ public class HandGestureActivity extends Activity {
 
     private void startCamera() {
 
+        if (cameraStarted || isFinishing() || isDestroyed()) {
+            return;
+        }
+
         controller = new HandCameraController(
                 this,
                 this,
@@ -206,12 +210,13 @@ public class HandGestureActivity extends Activity {
                     public void onGestureRecognized(
                             String name, String action) {
 
-                        runRecognizedAction(name, action);
+                        runOnUiThread(() ->
+                                runRecognizedAction(name, action));
                     }
 
                     @Override
                     public void onError(String message) {
-                        status.setText(message);
+                        runOnUiThread(() -> status.setText(message));
                     }
                 });
 
