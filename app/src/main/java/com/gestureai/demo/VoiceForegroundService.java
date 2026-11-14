@@ -120,7 +120,6 @@ public class VoiceForegroundService extends Service {
         } catch (Exception e) {
 
             running = false;
-
             stopForeground(true);
             stopSelf();
         }
@@ -448,5 +447,4 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-                }
-
+        }
