@@ -4,6 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080d1c">
 <title>Gesture AI</title>
 
 <style>
@@ -11,7 +12,7 @@
 :root{--accent:#00dfff}
 body{margin:0;background:#080d1c;color:#fff;font-family:Arial,sans-serif}
 header{padding:20px;background:linear-gradient(120deg,#101e42,#20205a);border-bottom:1px solid #334477}
-.logo{font-size:25px;font-weight:900;color:#61eaff}
+.logo{font-size:25px;font-weight:900;color:var(--accent)}
 .sub{color:#9caed1;font-size:12px;margin-top:5px}
 nav{display:flex;overflow-x:auto;gap:8px;padding:12px;background:#10172b;position:sticky;top:0;z-index:5}
 nav button{white-space:nowrap;border:1px solid #334466;background:#182440;color:white;padding:11px 15px;border-radius:20px}
@@ -266,12 +267,12 @@ footer{text-align:center;color:#627493;font-size:11px;padding:20px}
  </div>
 
 </section>
- </main>
- 
+</main>
+
 <footer>GESTURE AI • SMART CONTROL SYSTEM</footer>
 
 <script>
-
+   
 function hasAndroid(){
  return typeof Android !== 'undefined';
 }
@@ -341,21 +342,29 @@ function startVoiceControl(){
 
  if(!Android.isAudioAllowed || !Android.isAudioAllowed()){
   askMicrophonePermission();
+
   document.getElementById('voiceStatus').innerText=
    'Microphone अनुमति दें, फिर VOICE ON दबाएँ।';
+
   return;
  }
 
- Android.startVoiceControl();
+ try{
+  Android.startVoiceControl();
 
- document.getElementById('voiceStatus').innerText=
-  'Voice Control शुरू करने का अनुरोध भेज दिया गया।';
+  document.getElementById('voiceStatus').innerText=
+   'Voice Control शुरू करने का अनुरोध भेज दिया गया।';
+ }catch(error){
+  document.getElementById('voiceStatus').innerText=
+   'Voice Control शुरू नहीं हो पाया।';
+ }
 }
 
 function stopVoiceControl(){
 
  if(hasAndroid() && Android.stopVoiceControl){
   Android.stopVoiceControl();
+
   document.getElementById('voiceStatus').innerText=
    'Voice Control बंद करने का अनुरोध भेज दिया गया।';
  }
@@ -376,14 +385,17 @@ function loadCustomVoiceCommands(){
  if(!list) return;
 
  if(!hasAndroid() || !Android.getCustomVoiceCommands){
-  list.textContent='Custom Voice Commands की सुविधा Android APK में उपलब्ध होगी।';
+  list.textContent='Custom Voice Commands Android APK में उपलब्ध होंगे।';
   return;
  }
 
  try{
 
   const result=Android.getCustomVoiceCommands();
-  const commands=typeof result==='string'?JSON.parse(result):result;
+
+  const commands=typeof result==='string'
+   ? JSON.parse(result)
+   : result;
 
   list.innerHTML='';
 
@@ -469,38 +481,44 @@ function saveCustomVoiceCommand(){
 
  try{
 
+  // पहले नया कमांड सेव करें।
+  const saved=Android.saveCustomVoiceCommand(phrase,action);
+
+  if(!saved){
+   setCustomVoiceStatus('कमांड सेव नहीं हुआ। कृपया दोबारा कोशिश करें।');
+   return;
+  }
+
+  // नया कमांड सफलतापूर्वक सेव होने के बाद ही पुराना हटाएँ।
   if(editingCustomPhrase!==null &&
      editingCustomPhrase!==phrase){
 
-   const removed=Android.removeCustomVoiceCommand(editingCustomPhrase);
+   const removed=Android.removeCustomVoiceCommand(
+    editingCustomPhrase
+   );
 
    if(!removed){
-    setCustomVoiceStatus('पुराना कमांड अपडेट नहीं हो सका। दोबारा कोशिश करें।');
+    setCustomVoiceStatus(
+     'नया कमांड सेव हुआ, लेकिन पुराना कमांड नहीं हट पाया।'
+    );
+    loadCustomVoiceCommands();
     return;
    }
   }
 
-  const saved=Android.saveCustomVoiceCommand(phrase,action);
+  setCustomVoiceStatus('कमांड सफलतापूर्वक सेव हो गया।');
 
-  if(saved){
+  phraseInput.value='';
+  actionInput.value='volume up';
 
-   setCustomVoiceStatus('कमांड सफलतापूर्वक सेव हो गया।');
+  editingCustomPhrase=null;
 
-   phraseInput.value='';
-   actionInput.value='volume up';
+  document.getElementById('saveCustomCommandButton').textContent=
+   '💾 SAVE VOICE COMMAND';
 
-   editingCustomPhrase=null;
+  document.getElementById('cancelCustomEditButton').style.display='none';
 
-   document.getElementById('saveCustomCommandButton').textContent=
-    '💾 SAVE VOICE COMMAND';
-
-   document.getElementById('cancelCustomEditButton').style.display='none';
-
-   loadCustomVoiceCommands();
-
-  }else{
-   setCustomVoiceStatus('कमांड सेव नहीं हुआ। कृपया दोबारा कोशिश करें।');
-  }
+  loadCustomVoiceCommands();
 
  }catch(error){
   console.error('Save command error:',error);
@@ -520,7 +538,7 @@ function editCustomVoiceCommand(phrase,action){
 
  document.getElementById('cancelCustomEditButton').style.display='block';
 
- setCustomVoiceStatus('अब कमांड या Action बदलें और Update दबाएँ।');
+ setCustomVoiceStatus('कमांड या Action बदलें और Update दबाएँ।');
 
  document.getElementById('customPhrase').scrollIntoView({
   behavior:'smooth',
@@ -577,7 +595,8 @@ function removeCustomVoiceCommand(phrase){
  }
 }
 
-// Camera
+// CAMERA
+
 const cameraStreams={};
 
 async function startCamera(videoId,facingId){
@@ -603,7 +622,7 @@ async function startCamera(videoId,facingId){
 
   if(!navigator.mediaDevices ||
      !navigator.mediaDevices.getUserMedia){
-   alert('इस डिवाइस पर Camera उपलब्ध नहीं है।');
+   alert('इस डिवाइस पर Camera API उपलब्ध नहीं है।');
    return;
   }
 
@@ -679,7 +698,8 @@ function updateCameraStatus(){
   Object.keys(cameraStreams).length>0 ? 'ON' : 'OFF';
 }
 
-// Installed Apps
+// INSTALLED APPS
+
 let installedApps=[];
 
 function loadApps(){
@@ -688,7 +708,7 @@ function loadApps(){
  if(!appList) return;
 
  if(!hasAndroid() || !Android.getInstalledApps){
-  appList.textContent='Installed Apps की सूची Android APK में उपलब्ध होगी।';
+  appList.textContent='Installed Apps Android APK में उपलब्ध होंगे।';
   return;
  }
 
@@ -710,7 +730,6 @@ function loadApps(){
 
   console.error('App list error:',error);
   appList.textContent='Apps की सूची लोड नहीं हो पाई।';
-
  }
 }
 
@@ -760,7 +779,6 @@ function renderApps(){
    }else{
     alert('इस App को खोलने की सुविधा उपलब्ध नहीं है।');
    }
-
   });
 
   appList.appendChild(button);
@@ -779,7 +797,8 @@ function filterApps(){
  renderApps();
 }
 
-// Radar Demo
+// RADAR DEMO
+
 let radarOn=false;
 
 function toggleRadar(){
@@ -799,7 +818,8 @@ function radarTest(){
  alert('Radar Test: यह अभी Demo Test है।');
 }
 
-// Color Studio
+// COLOR STUDIO
+
 function applyColor(){
 
  const picker=document.getElementById('colorPicker');
@@ -826,7 +846,8 @@ function setColor(color){
  }
 }
 
-// Text Studio
+// TEXT STUDIO
+
 let selectedTextStyle='normal';
 
 function setTextStyle(style){
@@ -849,7 +870,8 @@ function applyText(){
   selectedTextStyle==='large'?'24px':'16px';
 }
 
-// Floating Controls
+// FLOATING CONTROLS
+
 function requestOverlayPermission(){
 
  if(hasAndroid() && Android.requestOverlayPermission){
@@ -886,7 +908,8 @@ function checkFloatingStatus(){
  }
 }
 
-// Permissions
+// PERMISSIONS
+
 function checkPermissions(){
 
  const status=document.getElementById('settingsPermissionStatus');
@@ -909,7 +932,8 @@ function checkPermissions(){
  updateCameraStatus();
 }
 
-// Emergency Stop
+// EMERGENCY STOP
+
 function emergencyOff(){
 
  stopAllCameras();
@@ -923,7 +947,8 @@ function emergencyOff(){
  alert('Camera, Radar और Voice Control बंद करने का अनुरोध भेज दिया गया।');
 }
 
-// Startup
+// STARTUP
+
 document.addEventListener('DOMContentLoaded',function(){
 
  checkPermissions();
@@ -931,7 +956,6 @@ document.addEventListener('DOMContentLoaded',function(){
  loadCustomVoiceCommands();
 
 });
-
 </script>
 </body>
 </html>
