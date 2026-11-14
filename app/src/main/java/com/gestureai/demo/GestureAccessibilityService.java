@@ -14,7 +14,7 @@ import android.view.accessibility.AccessibilityEvent;
 
 public class GestureAccessibilityService extends AccessibilityService {
 
-    private static GestureAccessibilityService instance;
+    private static volatile GestureAccessibilityService instance;
 
     private static volatile String foregroundPackage = "";
 
@@ -40,12 +40,21 @@ public class GestureAccessibilityService extends AccessibilityService {
 
         if (event == null) return;
 
+        int type = event.getEventType();
+
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && type != AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            return;
+        }
+
         CharSequence packageName = event.getPackageName();
 
-        if (packageName != null &&
-                !getPackageName().contentEquals(packageName)) {
+        if (packageName == null) return;
 
-            foregroundPackage = packageName.toString();
+        String name = packageName.toString();
+
+        if (!name.equals(getPackageName())) {
+            foregroundPackage = name;
         }
     }
 
@@ -55,56 +64,130 @@ public class GestureAccessibilityService extends AccessibilityService {
 
         if (service == null) return false;
 
-        return service.performGlobalAction(action);
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return service.performGlobalAction(action);
+        }
+
+        mainHandler.post(() -> {
+            GestureAccessibilityService current = instance;
+            if (current != null) {
+                current.performGlobalAction(action);
+            }
+        });
+
+        return true;
     }
 
     private static boolean canDispatch() {
-        return instance != null &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
+        return instance != null
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
+    }
+
+    private static boolean dispatchPath(
+            Path path,
+            long duration,
+            Runnable onCompleted) {
+
+        GestureAccessibilityService service = instance;
+
+        if (service == null || path == null) return false;
+
+        try {
+            GestureDescription gesture =
+                    new GestureDescription.Builder()
+                            .addStroke(
+                                    new GestureDescription.StrokeDescription(
+                                            path,
+                                            0,
+                                            Math.max(50, duration)
+                                    )
+                            )
+                            .build();
+
+            return service.dispatchGesture(
+                    gesture,
+                    new GestureResultCallback() {
+
+                        @Override
+                        public void onCompleted(
+                                GestureDescription gestureDescription) {
+
+                            if (onCompleted != null) {
+                                onCompleted.run();
+                            }
+                        }
+
+                        @Override
+                        public void onCancelled(
+                                GestureDescription gestureDescription) {
+                        }
+
+                    },
+                    mainHandler
+            );
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static void tap(float x, float y) {
 
         if (!canDispatch()) return;
 
-        Path path = new Path();
-        path.moveTo(x, y);
+        mainHandler.post(() -> {
 
-        GestureDescription gesture =
-                new GestureDescription.Builder()
-                        .addStroke(
-                                new GestureDescription.StrokeDescription(
-                                        path, 0, 100))
-                        .build();
+            Path path = new Path();
+            path.moveTo(x, y);
 
-        instance.dispatchGesture(gesture, null, null);
+            dispatchPath(path, 100, null);
+        });
     }
 
     public static void longPress(float x, float y) {
 
         if (!canDispatch()) return;
 
-        Path path = new Path();
-        path.moveTo(x, y);
+        mainHandler.post(() -> {
 
-        GestureDescription gesture =
-                new GestureDescription.Builder()
-                        .addStroke(
-                                new GestureDescription.StrokeDescription(
-                                        path, 0, 900))
-                        .build();
+            Path path = new Path();
+            path.moveTo(x, y);
 
-        instance.dispatchGesture(gesture, null, null);
+            dispatchPath(path, 900, null);
+        });
     }
 
     public static void doubleTap(float x, float y) {
 
         if (!canDispatch()) return;
 
-        tap(x, y);
+        mainHandler.post(() -> {
 
-        mainHandler.postDelayed(
-                () -> tap(x, y), 250);
+            Path firstPath = new Path();
+            firstPath.moveTo(x, y);
+
+            boolean started = dispatchPath(
+                    firstPath,
+                    100,
+                    () -> {
+
+                        mainHandler.postDelayed(() -> {
+
+                            if (!canDispatch()) return;
+
+                            Path secondPath = new Path();
+                            secondPath.moveTo(x, y);
+
+                            dispatchPath(secondPath, 100, null);
+
+                        }, 150);
+                    }
+            );
+
+            if (!started) {
+                return;
+            }
+        });
     }
 
     public static void swipe(
@@ -116,49 +199,64 @@ public class GestureAccessibilityService extends AccessibilityService {
 
         if (!canDispatch()) return;
 
-        Path path = new Path();
-        path.moveTo(startX, startY);
-        path.lineTo(endX, endY);
+        mainHandler.post(() -> {
 
-        long safeDuration =
-                Math.max(100, Math.min(duration, 5000));
+            Path path = new Path();
+            path.moveTo(startX, startY);
+            path.lineTo(endX, endY);
 
-        GestureDescription gesture =
-                new GestureDescription.Builder()
-                        .addStroke(
-                                new GestureDescription.StrokeDescription(
-                                        path, 0, safeDuration))
-                        .build();
+            long safeDuration =
+                    Math.max(100, Math.min(duration, 5000));
 
-        instance.dispatchGesture(gesture, null, null);
+            dispatchPath(path, safeDuration, null);
+        });
     }
 
     public static boolean scroll(boolean up) {
-
-        if (!canDispatch()) return false;
 
         GestureAccessibilityService service = instance;
 
         if (service == null) return false;
 
         WindowManager wm =
-                service.getSystemService(WindowManager.class);
+                (WindowManager) service.getSystemService(WINDOW_SERVICE);
 
         if (wm == null) return false;
 
-        Display display = wm.getDefaultDisplay();
+        try {
 
-        Point size = new Point();
-        display.getRealSize(size);
+            Display display = wm.getDefaultDisplay();
 
-        float centerX = size.x / 2f;
+            Point size = new Point();
+            display.getRealSize(size);
 
-        float startY = up ? size.y * 0.70f : size.y * 0.30f;
-        float endY = up ? size.y * 0.30f : size.y * 0.70f;
+            if (size.x <= 0 || size.y <= 0) {
+                return false;
+            }
 
-        swipe(centerX, startY, centerX, endY, 400);
+            float centerX = size.x / 2f;
 
-        return true;
+            float startY = up
+                    ? size.y * 0.70f
+                    : size.y * 0.30f;
+
+            float endY = up
+                    ? size.y * 0.30f
+                    : size.y * 0.70f;
+
+            swipe(
+                    centerX,
+                    startY,
+                    centerX,
+                    endY,
+                    400
+            );
+
+            return true;
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
