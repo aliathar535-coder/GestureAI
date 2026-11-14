@@ -1,4 +1,3 @@
-
 package com.gestureai.demo;
 
 import android.app.Service;
@@ -401,10 +400,10 @@ public class FloatingOverlayService extends Service {
 
         b.setTag(lp);
         b.setOnClickListener(v -> {
-    if (task != null) {
-        task.run();
-    }
-});
+            if (task != null) {
+                task.run();
+            }
+        });
 
         return b;
     }
@@ -603,9 +602,8 @@ public class FloatingOverlayService extends Service {
 
             return false;
         });
-    }
-
-    private void performItem(Item item) {
+      }
+         private void performItem(Item item) {
 
         if (!item.enabled) {
             Toast.makeText(this, "Button OFF hai",
@@ -721,8 +719,8 @@ public class FloatingOverlayService extends Service {
                     }
                 }
         );
-            }
-                            
+    }
+
     private String normalize(String value) {
 
         if (value == null) return "";
@@ -731,223 +729,90 @@ public class FloatingOverlayService extends Service {
                 .replaceAll("[^a-z0-9\\u0900-\\u097F]", "");
     }
 
-    private int spokenNumber(String command) {
-
-        String c = normalize(command);
-
-        String[] english = {
-                "zero", "one", "two", "three", "four",
-                "five", "six", "seven", "eight", "nine",
-                "ten", "eleven", "twelve", "thirteen",
-                "fourteen", "fifteen", "sixteen",
-                "seventeen", "eighteen", "nineteen", "twenty"
-        };
-
-        String[] hindi = {
-                "शून्य", "एक", "दो", "तीन", "चार",
-                "पांच", "छह", "सात", "आठ", "नौ",
-                "दस", "ग्यारह", "बारह", "तेरह",
-                "चौदह", "पंद्रह", "सोलह", "सत्रह",
-                "अठारह", "उन्नीस", "बीस"
-        };
-
-        for (int i = 1; i < english.length; i++) {
-
-            if (c.contains(english[i])
-                    || c.contains(hindi[i])
-                    || c.contains(String.valueOf(i))) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
     private Item findVoiceItem(String command) {
 
-        String c = normalize(command);
+        String search = normalize(command);
 
-        if (c.isEmpty()) return null;
+        if (search.isEmpty()) return null;
 
-        // Pehle button ke naam se match karein
+        search = search.replace("button", "")
+                .replace("number", "")
+                .replace("बटन", "")
+                .replace("नंबर", "");
+
         for (Item item : items) {
 
-            String name = normalize(item.command);
+            String itemName = normalize(item.command);
 
-            if (!name.isEmpty()
-                    && (c.equals(name)
-                    || c.contains(name)
-                    || name.contains(c))) {
+            if (search.equals(String.valueOf(item.number))
+                    || search.equals(itemName)
+                    || (!itemName.isEmpty()
+                    && search.contains(itemName))) {
 
                 return item;
-            }
-        }
-
-        // Phir button number se match karein
-        int number = spokenNumber(c);
-
-        if (number > 0) {
-
-            for (Item item : items) {
-
-                if (item.number == number) {
-                    return item;
-                }
             }
         }
 
         return null;
     }
 
-    private void handleVoiceCommand(String command) {
-
-        if (command == null || command.trim().isEmpty()) {
-            return;
-        }
-
-        String c = normalize(command);
-
-        // Saved floating button command
-        Item found = findVoiceItem(command);
-
-        if (found != null) {
-            performItem(found);
-            return;
-        }
-
-        // Wi-Fi settings
-        if (c.contains("wifi")
-                || c.contains("wifisetting")) {
-
-            openSettings(Settings.ACTION_WIFI_SETTINGS);
-            return;
-        }
-
-        // Bluetooth settings
-        if (c.contains("bluetooth")) {
-
-            openSettings(Settings.ACTION_BLUETOOTH_SETTINGS);
-            return;
-        }
-
-        // Display settings
-        if (c.contains("display")
-                || c.contains("brightness")
-                || c.contains("screen")) {
-
-            openSettings(Settings.ACTION_DISPLAY_SETTINGS);
-            return;
-        }
-
-        // Sound settings
-        if (c.contains("sound")
-                || c.contains("volume")
-                || c.contains("audio")) {
-
-            openSettings(Settings.ACTION_SOUND_SETTINGS);
-            return;
-        }
-
-        // General phone settings
-        if (c.contains("settings")
-                || c.contains("setting")
-                || c.contains("सेटिंग")) {
-
-            openSettings(Settings.ACTION_SETTINGS);
-            return;
-        }
-
-        // App open command
-        String appCommand = command
-                .replaceAll("(?i)open|launch|start|khol[o]?|chalu|karo|kar do|please", "")
-                .trim();
-
-        if (appCommand.isEmpty()) {
-            appCommand = command;
-        }
-
-        if (openMatchingApp(appCommand)) {
-            return;
-        }
-
-        Toast.makeText(this,
-                "Command samajh nahi aaya: " + command,
-                Toast.LENGTH_LONG).show();
-    }
-
-    private void openSettings(String action) {
-
-        try {
-
-            Intent intent = new Intent(action);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-            startActivity(intent);
-
-        } catch (Exception e) {
-
-            Toast.makeText(this,
-                    "Ye setting nahi khul payi",
-                    Toast.LENGTH_SHORT).show();
-        }
-    }
-
     private boolean openMatchingApp(String command) {
 
+        if (command == null || command.trim().isEmpty()) {
+            return false;
+        }
+
+        String search = normalize(command);
+
+        search = search.replace("open", "")
+                .replace("launch", "")
+                .replace("start", "")
+                .replace("kholo", "")
+                .replace("khol", "")
+                .replace("chalao", "")
+                .replace("चलाओ", "")
+                .replace("खोलो", "")
+                .replace("खोल", "");
+
+        search = search.trim();
+
+        if (search.isEmpty()) return false;
+
         try {
-
-            String search = normalize(command);
-
-            if (search.isEmpty()) return false;
-
-            Intent query = new Intent(Intent.ACTION_MAIN);
-            query.addCategory(Intent.CATEGORY_LAUNCHER);
 
             PackageManager pm = getPackageManager();
 
+            Intent queryIntent = new Intent(Intent.ACTION_MAIN);
+            queryIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+
             List<ResolveInfo> apps =
-                    pm.queryIntentActivities(query, 0);
+                    pm.queryIntentActivities(queryIntent, 0);
 
             ResolveInfo bestMatch = null;
 
             for (ResolveInfo info : apps) {
 
-                String label = info.loadLabel(pm).toString();
-                String packageName =
-                        info.activityInfo.packageName;
+                if (info.activityInfo == null) continue;
 
-                String appName = normalize(label);
-                String pkgName = normalize(packageName);
+                String appName = normalize(
+                        info.loadLabel(pm).toString()
+                );
 
-                if (appName.isEmpty()) continue;
+                String pkgName = normalize(
+                        info.activityInfo.packageName
+                );
 
-                if (appName.equals(search)
-                        || appName.contains(search)
-                        || search.contains(appName)
-                        || pkgName.contains(search)) {
-
-                    bestMatch = info;
-                    break;
-                }
-
-                // Music jaise common command ke liye
-                if (search.contains("music")
-                        && (appName.contains("music")
-                        || pkgName.contains("music"))) {
-
-                    bestMatch = info;
-                }
-
-                // YouTube command
-                if (search.contains("youtube")
-                        && (appName.contains("youtube")
-                        || pkgName.contains("youtube"))) {
+                if (search.equals(appName)
+                        || search.equals(pkgName)
+                        || (!appName.isEmpty()
+                        && appName.contains(search))
+                        || (!search.isEmpty()
+                        && search.contains(appName))) {
 
                     bestMatch = info;
                     break;
                 }
 
-                // WhatsApp command
                 if (search.contains("whatsapp")
                         && (appName.contains("whatsapp")
                         || pkgName.contains("whatsapp"))) {
@@ -979,6 +844,28 @@ public class FloatingOverlayService extends Service {
         }
 
         return false;
+    }
+
+    private void handleVoiceCommand(String command) {
+
+        if (command == null || command.trim().isEmpty()) {
+            return;
+        }
+
+        Item found = findVoiceItem(command);
+
+        if (found != null) {
+            performItem(found);
+            return;
+        }
+
+        if (openMatchingApp(command)) {
+            return;
+        }
+
+        Toast.makeText(this,
+                "Command samajh nahi aaya: " + command,
+                Toast.LENGTH_LONG).show();
     }
 
     @Override
@@ -1040,4 +927,5 @@ public class FloatingOverlayService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-            }
+}
+    
