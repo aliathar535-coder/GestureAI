@@ -4,7 +4,8 @@ name: Build Gesture AI APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -28,6 +29,27 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Check AndroidManifest XML
+        run: |
+          echo "Checking AndroidManifest.xml..."
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          path = "app/src/main/AndroidManifest.xml"
+          try:
+              ET.parse(path)
+              print("SUCCESS: Manifest XML is valid.")
+          except ET.ParseError as e:
+              print("MANIFEST XML ERROR:")
+              print(e)
+              raise
+          PY
+
+      - name: Show AndroidManifest with line numbers
+        if: always()
+        run: |
+          echo "===== AndroidManifest.xml ====="
+          nl -ba app/src/main/AndroidManifest.xml
+
       - name: Download Hand Recognition Model
         run: |
           mkdir -p app/src/main/assets
@@ -36,11 +58,14 @@ jobs:
             -o app/src/main/assets/hand_landmarker.task
           test -s app/src/main/assets/hand_landmarker.task
 
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Build debug APK with detailed errors
+        run: |
+          gradle assembleDebug --stacktrace --info
 
       - name: Verify APK
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
