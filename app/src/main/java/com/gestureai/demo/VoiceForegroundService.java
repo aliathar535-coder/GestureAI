@@ -134,7 +134,6 @@ public class VoiceForegroundService extends Service {
         try {
 
             if (recognizer != null) {
-
                 recognizer.cancel();
                 recognizer.destroy();
                 recognizer = null;
@@ -176,14 +175,16 @@ public class VoiceForegroundService extends Service {
                     starting = false;
                     listening = false;
 
-                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    if (error ==
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         stopVoice();
                         return;
                     }
 
                     if (error == SpeechRecognizer.ERROR_CLIENT) {
                         restartDelay = 3000;
-                    } else if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    } else if (error ==
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                         restartDelay = 4000;
                     } else {
                         restartDelay = Math.min(
@@ -200,7 +201,6 @@ public class VoiceForegroundService extends Service {
 
                     starting = false;
                     listening = false;
-
                     restartDelay = 1500;
 
                     ArrayList<String> matches =
@@ -372,23 +372,15 @@ public class VoiceForegroundService extends Service {
         Notification.Builder builder;
 
         if (Build.VERSION.SDK_INT >= 26) {
-
-            builder = new Notification.Builder(
-                    this,
-                    CHANNEL_ID
-            );
-
+            builder = new Notification.Builder(this, CHANNEL_ID);
         } else {
-
             builder = new Notification.Builder(this);
         }
 
         return builder
                 .setContentTitle("Gesture AI Voice Control")
                 .setContentText("Voice control चालू है")
-                .setSmallIcon(
-                        android.R.drawable.ic_btn_speak_now
-                )
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setOngoing(true)
                 .build();
     }
@@ -447,4 +439,4 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-        }
+    }
