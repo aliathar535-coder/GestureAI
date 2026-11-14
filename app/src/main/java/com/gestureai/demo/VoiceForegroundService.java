@@ -503,4 +503,4 @@ public class VoiceForegroundService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-        }
+}
