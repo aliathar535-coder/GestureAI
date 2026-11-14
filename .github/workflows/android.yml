@@ -1,75 +1,151 @@
-
-name: Build Gesture AI APK
+name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: read
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Setup Android SDK (Android 15 / API 35)
+        uses: android-actions/setup-android@v4
         with:
-          gradle-version: '8.9'
+          api-level: 35
+          build-tools: 35.0.0
 
-      - name: Check AndroidManifest XML
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Create Cordova Project & Build for Android 15
         run: |
-          echo "Checking AndroidManifest.xml..."
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          path = "app/src/main/AndroidManifest.xml"
-          try:
-              ET.parse(path)
-              print("SUCCESS: Manifest XML is valid.")
-          except ET.ParseError as e:
-              print("MANIFEST XML ERROR:")
-              print(e)
-              raise
-          PY
+          cordova create myApp com.gadipro.app gadipro
+          cd myApp
+          cordova platform add android@13.0.0
+          cp ../index.html www/index.html
+          cordova build android --debug
 
-      - name: Show AndroidManifest with line numbers
-        if: always()
-        run: |
-          echo "===== AndroidManifest.xml ====="
-          nl -ba app/src/main/AndroidManifest.xml
-
-      - name: Download Hand Recognition Model
-        run: |
-          mkdir -p app/src/main/assets
-          curl -L --fail --retry 3 \
-            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" \
-            -o app/src/main/assets/hand_landmarker.task
-          test -s app/src/main/assets/hand_landmarker.task
-
-      - name: Build debug APK with detailed errors
-        run: |
-          gradle assembleDebug --stacktrace --info
-
-      - name: Verify APK
-        run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gesture-AI-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          
+          name: name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK (Android 15 / API 35)
+        uses: android-actions/setup-android@v4
+        with:
+          api-level: 35
+          build-tools: 35.0.0
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Create Cordova Project & Build for Android 15
+        run: |
+          cordova create myApp com.gadipro.app name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK (Android 15 / API 35)
+        uses: android-actions/setup-android@v4
+        with:
+          api-level: 35
+          build-tools: 35.0.0
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Create Cordova Project & Build for Android 15
+        run: |
+          cordova create myApp com.gestureai.app gestureai
+          cd myApp
+          cordova platform add android@13.0.0
+          cp ../index.html www/index.html
+          cordova build android --debug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gestureai-Android15-APK
+          path: myApp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          cd myApp
+          cordova platform add android@13.0.0
+          cp ../index.html www/index.html
+          cordova build android --debug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gadipro-Android15-APK
+          path: myApp/platforms/android/app/build/outputs/apk/debug/app-debug.apk-Android15-APK
+          path: myApp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
