@@ -1,10 +1,12 @@
-l
+
 package com.gestureai.demo;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -12,21 +14,22 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.view.PreviewView;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+
 public class HandGestureActivity extends AppCompatActivity {
 
     private static final int CAMERA_PERMISSION = 501;
-    private static final long ACTION_COOLDOWN = 3000;
-
-    private HandCameraController controller;
-    private GestureActionExecutor actionExecutor;
+    private static final long ACTION_COOLDOWN = 3000L;
 
     private PreviewView previewView;
     private TextView status;
@@ -34,10 +37,14 @@ public class HandGestureActivity extends AppCompatActivity {
     private EditText gestureAction;
     private LinearLayout savedList;
 
-    private boolean cameraStarted = false;
+    private HandCameraController controller;
+    private GestureActionExecutor actionExecutor;
 
-    private String lastExecutedAction = "";
-    private long lastActionTime = 0;
+    private boolean cameraStartRequested = false;
+    private boolean learning = false;
+    private boolean activityDestroyed = false;
+
+    private final Map<String, Long> lastActionTimes = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,144 +52,132 @@ public class HandGestureActivity extends AppCompatActivity {
 
         actionExecutor = new GestureActionExecutor(this);
 
-        createScreen();
+        createInterface();
 
-        if (ContextCompat.checkSelfPermission(
-                this, Manifest.permission.CAMERA)
-                == PackageManager.PERMISSION_GRANTED) {
-
-            startCamera();
-
+        if (hasCameraPermission()) {
+            initializeCameraController();
+            refreshSavedGestures();
         } else {
-            ActivityCompat.requestPermissions(
-                    this,
-                    new String[]{Manifest.permission.CAMERA},
-                    CAMERA_PERMISSION);
+            requestCameraPermission();
         }
     }
 
-    private void createScreen() {
+    private void createInterface() {
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(16, 16, 16, 16);
-        root.setBackgroundColor(0xFF101827);
+        root.setPadding(dp(16), dp(16), dp(16), dp(24));
+
+        scrollView.addView(root);
 
         TextView heading = new TextView(this);
-        heading.setText("GESTURE AI - HAND CONTROL");
-        heading.setTextColor(0xFFFFFFFF);
-        heading.setTextSize(20);
+        heading.setText("Gesture AI - Hand Control");
+        heading.setTextSize(23);
         heading.setGravity(Gravity.CENTER);
+        heading.setPadding(0, dp(8), 0, dp(16));
         root.addView(heading);
 
         previewView = new PreviewView(this);
-        previewView.setImplementationMode(
-                PreviewView.ImplementationMode.COMPATIBLE);
+        previewView.setId(View.generateViewId());
+        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
 
         LinearLayout.LayoutParams previewParams =
                 new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 260);
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(300)
+                );
 
-        previewParams.setMargins(0, 12, 0, 12);
         root.addView(previewView, previewParams);
 
         status = new TextView(this);
-        status.setText("Camera starting...");
-        status.setTextColor(0xFF00E5FF);
-        status.setTextSize(15);
+        status.setText("Camera शुरू होने का इंतजार...");
+        status.setTextSize(16);
+        status.setPadding(0, dp(14), 0, dp(14));
         root.addView(status);
+
+        TextView nameLabel = new TextView(this);
+        nameLabel.setText("Gesture का नाम");
+        nameLabel.setTextSize(16);
+        root.addView(nameLabel);
 
         gestureName = new EditText(this);
         gestureName.setSingleLine(true);
-        gestureName.setHint("Apne ishare ka naam likhein");
-        gestureName.setTextColor(0xFFFFFFFF);
-        gestureName.setHintTextColor(0xFFAAAAAA);
+        gestureName.setHint("जैसे: Open Hand");
         root.addView(gestureName);
+
+        TextView actionLabel = new TextView(this);
+        actionLabel.setText("इस Gesture पर कौन सा Action चले?");
+        actionLabel.setTextSize(16);
+        actionLabel.setPadding(0, dp(10), 0, 0);
+        root.addView(actionLabel);
 
         gestureAction = new EditText(this);
         gestureAction.setSingleLine(true);
-        gestureAction.setHint("Is ishare ka action likhein");
-        gestureAction.setTextColor(0xFFFFFFFF);
-        gestureAction.setHintTextColor(0xFFAAAAAA);
+        gestureAction.setHint("जैसे: volume up, back, home");
         root.addView(gestureAction);
 
-        Button learnButton = makeButton("LEARN & SAVE GESTURE");
+        Button learnButton = new Button(this);
+        learnButton.setText("Gesture सीखें और सेव करें");
         root.addView(learnButton);
 
-        learnButton.setOnClickListener(v -> {
+        learnButton.setOnClickListener(v -> beginLearning());
 
-            if (controller == null || !cameraStarted) {
-                showMessage("Camera abhi ready nahi hai");
-                return;
-            }
-
-            String name =
-                    gestureName.getText().toString().trim();
-
-            String action =
-                    gestureAction.getText().toString().trim();
-
-            if (name.isEmpty() || action.isEmpty()) {
-                showMessage("Naam aur action dono likhein");
-                return;
-            }
-
-            if (controller.startLearning(name, action)) {
-                status.setText(
-                        "Ab camera ke saamne 5 baar ek hi ishara dikhayein");
-            } else {
-                showMessage("Learning shuru nahi hui");
-            }
-        });
-
-        Button cancelButton = makeButton("CANCEL LEARNING");
+        Button cancelButton = new Button(this);
+        cancelButton.setText("Learning रद्द करें");
         root.addView(cancelButton);
 
-        cancelButton.setOnClickListener(v -> {
-            if (controller != null) {
-                controller.cancelLearning();
-                status.setText("Learning cancelled");
-            }
-        });
+        cancelButton.setOnClickListener(v -> cancelLearning());
+
+        Button refreshButton = new Button(this);
+        refreshButton.setText("Saved Gestures Refresh करें");
+        root.addView(refreshButton);
+
+        refreshButton.setOnClickListener(v -> refreshSavedGestures());
 
         TextView savedHeading = new TextView(this);
-        savedHeading.setText("SAVED GESTURES");
-        savedHeading.setTextColor(0xFFFFFFFF);
-        savedHeading.setTextSize(18);
-        savedHeading.setPadding(0, 18, 0, 8);
+        savedHeading.setText("मेरे Saved Gestures");
+        savedHeading.setTextSize(20);
+        savedHeading.setPadding(0, dp(20), 0, dp(8));
         root.addView(savedHeading);
 
         savedList = new LinearLayout(this);
         savedList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(savedList);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(savedList);
+        Button closeButton = new Button(this);
+        closeButton.setText("वापस जाएँ");
+        root.addView(closeButton);
 
-        root.addView(scroll,
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        0, 1));
+        closeButton.setOnClickListener(v -> finish());
 
-        setContentView(root);
-
-        refreshSavedList();
+        setContentView(scrollView);
     }
 
-    private Button makeButton(String title) {
-
-        Button button = new Button(this);
-        button.setText(title);
-        button.setTextColor(0xFFFFFFFF);
-        button.setBackgroundTintList(
-                android.content.res.ColorStateList.valueOf(
-                        0xFF1769AA));
-
-        return button;
+    private int dp(float value) {
+        return (int) (value *
+                getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private void startCamera() {
+    private boolean hasCameraPermission() {
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
 
-        if (cameraStarted || isFinishing() || isDestroyed()) {
+    private void requestCameraPermission() {
+        requestPermissions(
+                new String[]{Manifest.permission.CAMERA},
+                CAMERA_PERMISSION
+        );
+    }
+
+    private void initializeCameraController() {
+
+        if (controller != null || activityDestroyed) {
             return;
         }
 
@@ -193,169 +188,347 @@ public class HandGestureActivity extends AppCompatActivity {
                 new HandCameraController.Listener() {
 
                     @Override
-                    public void onLearningProgress(int count) {
+                    public void onLearningProgress(int progress) {
+                        runOnUiThread(() -> {
 
-                        if (count == 5) {
-                            status.setText(
-                                    "Gesture saved successfully!");
-                            refreshSavedList();
+                            if (activityDestroyed) {
+                                return;
+                            }
 
-                        } else if (count >= 0) {
                             status.setText(
-                                    "Learning sample: " + count + "/5");
-                        }
+                                    "Gesture सीख रहा है: " +
+                                    progress + "/5"
+                            );
+
+                            if (progress >= 5) {
+                                learning = false;
+                                status.setText(
+                                        "Gesture सफलतापूर्वक सेव हो गया!"
+                                );
+                                refreshSavedGestures();
+                                showToast("Gesture सेव हो गया");
+                            }
+                        });
                     }
 
                     @Override
                     public void onGestureRecognized(
-                            String name, String action) {
+                            String name,
+                            String action
+                    ) {
+                        runOnUiThread(() -> {
 
-                        runOnUiThread(() ->
-                                runRecognizedAction(name, action));
+                            if (activityDestroyed || learning) {
+                                return;
+                            }
+
+                            status.setText(
+                                    "पहचाना गया: " + name +
+                                    "\nAction: " + action
+                            );
+
+                            runRecognizedAction(name, action);
+                        });
                     }
 
                     @Override
                     public void onError(String message) {
-                        runOnUiThread(() -> status.setText(message));
+                        runOnUiThread(() -> {
+
+                            if (activityDestroyed) {
+                                return;
+                            }
+
+                            cameraStartRequested = false;
+                            status.setText("समस्या: " + message);
+                        });
                     }
-                });
+                }
+        );
+    }
+
+    private void startCamera() {
+
+        if (activityDestroyed || isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        if (!hasCameraPermission()) {
+            requestCameraPermission();
+            return;
+        }
+
+        if (cameraStartRequested) {
+            return;
+        }
+
+        initializeCameraController();
+
+        if (controller == null) {
+            status.setText("Camera Controller शुरू नहीं हो पाया");
+            return;
+        }
+
+        cameraStartRequested = true;
+        status.setText("Camera शुरू हो रहा है...");
 
         controller.start();
-        cameraStarted = true;
+    }
+
+    private void beginLearning() {
+
+        if (!hasCameraPermission()) {
+            requestCameraPermission();
+            return;
+        }
+
+        if (controller == null) {
+            initializeCameraController();
+        }
+
+        String name = gestureName.getText().toString().trim();
+        String action = gestureAction.getText().toString().trim();
+
+        if (name.isEmpty()) {
+            gestureName.setError("Gesture का नाम लिखें");
+            return;
+        }
+
+        if (action.isEmpty()) {
+            gestureAction.setError("Action लिखें");
+            return;
+        }
+
+        if (controller == null) {
+            showToast("Camera Controller उपलब्ध नहीं है");
+            return;
+        }
+
+        if (!cameraStartRequested) {
+            startCamera();
+        }
+
+        boolean started = controller.startLearning(name, action);
+
+        if (started) {
+            learning = true;
+            status.setText(
+                    "Learning शुरू हो गई।\n" +
+                    "अपना हाथ कैमरे के सामने रखें।"
+            );
+        } else {
+            learning = false;
+            showToast("Learning शुरू नहीं हो पाई");
+        }
+    }
+
+    private void cancelLearning() {
+
+        learning = false;
+
+        if (controller != null) {
+            controller.cancelLearning();
+        }
+
+        status.setText("Gesture Learning रद्द कर दी गई");
+        showToast("Learning रद्द हो गई");
     }
 
     private void runRecognizedAction(
-            String name, String action) {
+            String name,
+            String action
+    ) {
 
-        long now = System.currentTimeMillis();
-
-        if (action == null || action.trim().isEmpty()) {
+        if (name == null || action == null) {
             return;
         }
 
-        if (action.equals(lastExecutedAction)
-                && now - lastActionTime < ACTION_COOLDOWN) {
+        String key = name.trim().toLowerCase();
+
+        if (key.isEmpty()) {
             return;
         }
 
-        lastExecutedAction = action;
-        lastActionTime = now;
+        long now = SystemClock.elapsedRealtime();
+
+        Long lastTime = lastActionTimes.get(key);
+
+        if (lastTime != null &&
+                now - lastTime < ACTION_COOLDOWN) {
+            return;
+        }
 
         boolean success = actionExecutor.execute(action);
 
         if (success) {
-            status.setText(
-                    "Recognized: " + name +
-                    "\nAction executed: " + action);
+            lastActionTimes.put(key, now);
         } else {
             status.setText(
-                    "Recognized: " + name +
-                    "\nAction not completed: " + action);
+                    "Gesture पहचाना गया, लेकिन Action नहीं चला: " +
+                    action
+            );
         }
     }
 
-    private void refreshSavedList() {
+    private void refreshSavedGestures() {
 
-        if (savedList == null) return;
+        if (savedList == null) {
+            return;
+        }
 
         savedList.removeAllViews();
 
-        JSONArray data;
+        if (controller == null) {
+            addEmptySavedMessage();
+            return;
+        }
+
+        JSONArray gestures = controller.getSavedGestures();
+
+        if (gestures == null || gestures.length() == 0) {
+            addEmptySavedMessage();
+            return;
+        }
+
+        for (int i = 0; i < gestures.length(); i++) {
+
+            JSONObject item = gestures.optJSONObject(i);
+
+            if (item == null) {
+                continue;
+            }
+
+            String name = item.optString("name", "");
+            String action = item.optString("action", "");
+
+            if (name.trim().isEmpty()) {
+                continue;
+            }
+
+            addSavedGestureItem(name, action);
+        }
+    }
+
+    private void addEmptySavedMessage() {
+
+        TextView empty = new TextView(this);
+        empty.setText("अभी कोई Gesture सेव नहीं है।");
+        empty.setTextSize(15);
+        empty.setPadding(0, dp(8), 0, dp(8));
+
+        savedList.addView(empty);
+    }
+
+    private void addSavedGestureItem(
+            String name,
+            String action
+    ) {
+
+        LinearLayout itemLayout = new LinearLayout(this);
+        itemLayout.setOrientation(LinearLayout.VERTICAL);
+        itemLayout.setPadding(
+                dp(10), dp(8), dp(10), dp(8)
+        );
+
+        TextView details = new TextView(this);
+        details.setText(
+                "Gesture: " + name +
+                "\nAction: " + action
+        );
+        details.setTextSize(15);
+
+        itemLayout.addView(details);
+
+        Button removeButton = new Button(this);
+        removeButton.setText("यह Gesture हटाएँ");
+
+        removeButton.setOnClickListener(v -> {
+
+            if (controller == null) {
+                showToast("Gesture Controller उपलब्ध नहीं है");
+                return;
+            }
+
+            boolean removed = controller.removeGesture(name);
+
+            if (removed) {
+                showToast("Gesture हटा दिया गया");
+                refreshSavedGestures();
+            } else {
+                showToast("Gesture हटाया नहीं जा सका");
+            }
+        });
+
+        itemLayout.addView(removeButton);
+
+        savedList.addView(itemLayout);
+
+        View divider = new View(this);
+        divider.setBackgroundColor(0xFFBBBBBB);
+
+        LinearLayout.LayoutParams dividerParams =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(1)
+                );
+
+        savedList.addView(divider, dividerParams);
+    }
+
+    private void showToast(String message) {
+        Toast.makeText(
+                this,
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (hasCameraPermission()) {
+            startCamera();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        cameraStartRequested = false;
 
         if (controller != null) {
-            data = controller.getSavedGestures();
-        } else {
-            data = loadSavedData();
+            controller.stop();
         }
-
-        for (int i = 0; i < data.length(); i++) {
-
-            JSONObject item = data.optJSONObject(i);
-
-            if (item == null) continue;
-
-            String name = item.optString("name");
-            String action = item.optString("action");
-
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(8, 8, 8, 8);
-
-            TextView details = new TextView(this);
-            details.setText(name + "\nAction: " + action);
-            details.setTextColor(0xFFFFFFFF);
-            row.addView(details);
-
-            Button remove = makeButton("REMOVE");
-            row.addView(remove);
-
-            remove.setOnClickListener(v -> {
-
-                new android.app.AlertDialog.Builder(this)
-                        .setTitle("Remove Gesture?")
-                        .setMessage(
-                                "Kya aap " + name +
-                                " ko hatana chahte hain?")
-                        .setNegativeButton("NO", null)
-                        .setPositiveButton("YES",
-                                (dialog, which) -> {
-
-                            boolean removed = controller != null
-                                    && controller.removeGesture(name);
-
-                            if (removed) {
-                                showMessage("Gesture removed");
-                                refreshSavedList();
-                            } else {
-                                showMessage(
-                                        "Gesture remove nahi hua");
-                            }
-                        })
-                        .show();
-            });
-
-            savedList.addView(row);
-        }
-    }
-
-    private JSONArray loadSavedData() {
-
-        try {
-            String json = getSharedPreferences(
-                    "gesture_ai_data", MODE_PRIVATE)
-                    .getString("saved_hand_gestures", "[]");
-
-            return new JSONArray(json);
-
-        } catch (Exception e) {
-            return new JSONArray();
-        }
-    }
-
-    private void showMessage(String message) {
-        Toast.makeText(
-                this, message, Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onRequestPermissionsResult(
             int requestCode,
-            String[] permissions,
-            int[] grantResults) {
-
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
         super.onRequestPermissionsResult(
-                requestCode, permissions, grantResults);
+                requestCode,
+                permissions,
+                grantResults
+        );
 
         if (requestCode == CAMERA_PERMISSION) {
 
             if (grantResults.length > 0 &&
-                    grantResults[0] ==
-                    PackageManager.PERMISSION_GRANTED) {
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
 
+                initializeCameraController();
                 startCamera();
+                refreshSavedGestures();
 
             } else {
-                status.setText("Camera permission required");
+                status.setText(
+                        "Hand Gesture चलाने के लिए Camera Permission जरूरी है।"
+                );
+                showToast("Camera Permission नहीं मिली");
             }
         }
     }
@@ -363,7 +536,9 @@ public class HandGestureActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
 
-        cameraStarted = false;
+        activityDestroyed = true;
+        cameraStartRequested = false;
+        learning = false;
 
         if (controller != null) {
             controller.shutdown();
@@ -372,4 +547,4 @@ public class HandGestureActivity extends AppCompatActivity {
 
         super.onDestroy();
     }
-}
+            }
