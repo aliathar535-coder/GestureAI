@@ -1,30 +1,45 @@
+
 name: Build Gesture AI APK
+
 on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Download Hand Recognition Model
+        run: |
+          mkdir -p app/src/main/assets
+          curl -L --fail --retry 3 \
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" \
+            -o app/src/main/assets/hand_landmarker.task
+
       - name: Build debug APK
         run: gradle assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Gesture-AI-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-          
