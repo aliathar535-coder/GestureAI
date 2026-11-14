@@ -1,10 +1,8 @@
-
 package com.gestureai.demo;
 
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -27,7 +25,6 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Locale;
-import java.util.List;
 
 public class FloatingOverlayService extends Service {
 
@@ -40,12 +37,13 @@ public class FloatingOverlayService extends Service {
     private static final String PREF = "gesture_float_data";
     private static final String PROFILES = "app_profiles";
 
+    private static final String VOICE_COMMAND_ACTION =
+            "com.gestureai.demo.VOICE_COMMAND";
+
     private String activeProfile = "default";
 
     private Handler handler = new Handler(Looper.getMainLooper());
     private VoiceCommandHelper voiceHelper;
-
-    // CUSTOM VOICE COMMAND STORE
     private CustomVoiceCommandStore customVoiceStore;
 
     private class Item {
@@ -73,7 +71,9 @@ public class FloatingOverlayService extends Service {
                 switchProfile(pkg);
             }
 
-            handler.postDelayed(this, 1000);
+            if (handler != null) {
+                handler.postDelayed(this, 1000);
+            }
         }
     };
 
@@ -94,13 +94,17 @@ public class FloatingOverlayService extends Service {
 
         WindowManager.LayoutParams p =
                 new WindowManager.LayoutParams(
-                        size, size, overlayType(),
+                        size,
+                        size,
+                        overlayType(),
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                        PixelFormat.TRANSLUCENT);
+                        PixelFormat.TRANSLUCENT
+                );
 
         p.gravity = Gravity.TOP | Gravity.START;
         p.x = x;
         p.y = y;
+
         return p;
     }
 
@@ -122,7 +126,6 @@ public class FloatingOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
 
-        // CUSTOM VOICE COMMAND INITIALIZATION
         customVoiceStore = new CustomVoiceCommandStore(this);
 
         if (android.os.Build.VERSION.SDK_INT >= 23
@@ -132,6 +135,11 @@ public class FloatingOverlayService extends Service {
         }
 
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        if (wm == null) {
+            stopSelf();
+            return;
+        }
 
         activeProfile =
                 GestureAccessibilityService.getForegroundPackage();
@@ -147,13 +155,33 @@ public class FloatingOverlayService extends Service {
         handler.postDelayed(profileChecker, 1000);
     }
 
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+
+        if (intent != null
+                && VOICE_COMMAND_ACTION.equals(intent.getAction())) {
+
+            String command =
+                    intent.getStringExtra("voice_command");
+
+            if (command != null && !command.trim().isEmpty()) {
+                handleVoiceCommand(command);
+            }
+        }
+
+        return START_STICKY;
+    }
+
     private void showPlus() {
 
         plus = makeButton("+");
         plus.setTextSize(27);
         plus.setOnClickListener(v -> showManager());
 
-        wm.addView(plus, makeParams(dp(25), dp(180), dp(58)));
+        wm.addView(
+                plus,
+                makeParams(dp(25), dp(180), dp(58))
+        );
     }
 
     private void switchProfile(String packageName) {
@@ -167,7 +195,8 @@ public class FloatingOverlayService extends Service {
                 if (item.view != null) {
                     wm.removeView(item.view);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         items.clear();
@@ -200,7 +229,9 @@ public class FloatingOverlayService extends Service {
                 item.command = obj.getString("command");
                 item.enabled = obj.optBoolean("enabled", true);
 
-                item.view = makeButton(String.valueOf(item.number));
+                item.view = makeButton(
+                        String.valueOf(item.number)
+                );
 
                 item.params = makeParams(
                         obj.getInt("x"),
@@ -294,6 +325,7 @@ public class FloatingOverlayService extends Service {
         addRow(panel,
                 action("Add", () -> {
                     String name = input.getText().toString().trim();
+
                     if (name.isEmpty()) return;
 
                     addItem(name);
@@ -321,7 +353,6 @@ public class FloatingOverlayService extends Service {
                     + (item.enabled ? " [ON]" : " [OFF]"));
 
             name.setTextColor(Color.WHITE);
-
             row.addView(name);
 
             addRow(row,
@@ -362,7 +393,6 @@ public class FloatingOverlayService extends Service {
                 );
 
         p.gravity = Gravity.CENTER;
-
         p.softInputMode =
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
@@ -406,6 +436,7 @@ public class FloatingOverlayService extends Service {
         lp.setMargins(dp(2), dp(3), dp(2), dp(3));
 
         b.setTag(lp);
+
         b.setOnClickListener(v -> {
             if (task != null) {
                 task.run();
@@ -421,7 +452,10 @@ public class FloatingOverlayService extends Service {
         row.setOrientation(LinearLayout.HORIZONTAL);
 
         for (TextView b : buttons) {
-            row.addView(b, (LinearLayout.LayoutParams) b.getTag());
+            row.addView(
+                    b,
+                    (LinearLayout.LayoutParams) b.getTag()
+            );
         }
 
         parent.addView(row);
@@ -479,7 +513,8 @@ public class FloatingOverlayService extends Service {
 
                     try {
                         wm.removeView(item.view);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
 
                     items.remove(item);
                     saveProfile();
@@ -504,19 +539,22 @@ public class FloatingOverlayService extends Service {
                 );
 
         p.gravity = Gravity.CENTER;
-
         p.softInputMode =
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
-        wm.addView(panel, p);
-            }
-    
-    private void closePanel() {
+        try {
+            wm.addView(panel, p);
+        } catch (Exception e) {
+            panel = null;
+        }
+                           }
+        private void closePanel() {
 
         if (panel != null && wm != null) {
             try {
                 wm.removeView(panel);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             panel = null;
         }
@@ -591,7 +629,10 @@ public class FloatingOverlayService extends Service {
                         item.params.x = item.initialX + (int) dx;
                         item.params.y = item.initialY + (int) dy;
 
-                        wm.updateViewLayout(item.view, item.params);
+                        try {
+                            wm.updateViewLayout(item.view, item.params);
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     return true;
@@ -612,6 +653,8 @@ public class FloatingOverlayService extends Service {
     }
 
     private void performItem(Item item) {
+
+        if (item == null) return;
 
         if (!item.enabled) {
             Toast.makeText(this, "Button OFF hai",
@@ -737,207 +780,108 @@ public class FloatingOverlayService extends Service {
                 .replaceAll("[^a-z0-9\\u0900-\\u097F]", "");
     }
 
-    private Item findVoiceItem(String command) {
+    private Item findVoiceItem(String spokenCommand) {
 
-        String search = normalize(command);
+        String spoken = normalize(spokenCommand);
 
-        if (search.isEmpty()) return null;
+        if (spoken.isEmpty()) return null;
 
-        search = search.replace("button", "")
-                .replace("number", "")
-                .replace("बटन", "")
-                .replace("नंबर", "");
-
+        // पहले पूरा नाम मिलाएँ
         for (Item item : items) {
 
-            String itemName = normalize(item.command);
-
-            if (search.equals(String.valueOf(item.number))
-                    || search.equals(itemName)
-                    || (!itemName.isEmpty()
-                    && search.contains(itemName))) {
-
+            if (item.enabled
+                    && normalize(item.command).equals(spoken)) {
                 return item;
             }
+        }
+
+        // फिर नाम के अंदर बोले गए शब्द खोजें
+        for (Item item : items) {
+
+            String savedName = normalize(item.command);
+
+            if (item.enabled
+                    && !savedName.isEmpty()
+                    && spoken.contains(savedName)) {
+                return item;
+            }
+        }
+
+        // Button number से खोजें
+        try {
+            int number = Integer.parseInt(spoken);
+
+            for (Item item : items) {
+                if (item.enabled && item.number == number) {
+                    return item;
+                }
+            }
+        } catch (NumberFormatException ignored) {
         }
 
         return null;
     }
 
-    private boolean openMatchingApp(String command) {
+    private void handleVoiceCommand(String spokenCommand) {
 
-        if (command == null || command.trim().isEmpty()) {
-            return false;
-        }
-
-        String search = normalize(command);
-
-        search = search.replace("open", "")
-                .replace("launch", "")
-                .replace("start", "")
-                .replace("kholo", "")
-                .replace("khol", "")
-                .replace("chalao", "")
-                .replace("चलाओ", "")
-                .replace("खोलो", "")
-                .replace("खोल", "");
-
-        search = search.trim();
-
-        if (search.isEmpty()) return false;
-
-        try {
-
-            PackageManager pm = getPackageManager();
-
-            Intent queryIntent = new Intent(Intent.ACTION_MAIN);
-            queryIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-
-            List<ResolveInfo> apps =
-                    pm.queryIntentActivities(queryIntent, 0);
-
-            ResolveInfo bestMatch = null;
-
-            for (ResolveInfo info : apps) {
-
-                if (info.activityInfo == null) continue;
-
-                String appName = normalize(
-                        info.loadLabel(pm).toString()
-                );
-
-                String pkgName = normalize(
-                        info.activityInfo.packageName
-                );
-
-                if (search.equals(appName)
-                        || search.equals(pkgName)
-                        || (!appName.isEmpty()
-                        && appName.contains(search))
-                        || (!search.isEmpty()
-                        && search.contains(appName))) {
-
-                    bestMatch = info;
-                    break;
-                }
-
-                if (search.contains("whatsapp")
-                        && (appName.contains("whatsapp")
-                        || pkgName.contains("whatsapp"))) {
-
-                    bestMatch = info;
-                    break;
-                }
-            }
-
-            if (bestMatch != null) {
-
-                Intent launch = new Intent(Intent.ACTION_MAIN);
-
-                launch.addCategory(Intent.CATEGORY_LAUNCHER);
-
-                launch.setClassName(
-                        bestMatch.activityInfo.packageName,
-                        bestMatch.activityInfo.name
-                );
-
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                startActivity(launch);
-                return true;
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return false;
-    }
-
-    private void handleVoiceCommand(String command) {
-
-        if (command == null || command.trim().isEmpty()) {
+        if (spokenCommand == null || spokenCommand.trim().isEmpty()) {
             return;
         }
 
-        // 1. SABSE PEHLE CUSTOM VOICE COMMAND CHECK
+        // सबसे पहले Custom Voice Command जाँचें
         if (customVoiceStore != null) {
 
             String customAction =
-                    customVoiceStore.findAction(command);
+                    customVoiceStore.findAction(spokenCommand);
 
-            if (customAction != null
-                    && !customAction.trim().isEmpty()) {
+            if (customAction != null && !customAction.trim().isEmpty()) {
 
-                try {
+                GestureActionExecutor executor =
+                        new GestureActionExecutor(this);
 
-                    GestureActionExecutor executor =
-                            new GestureActionExecutor(this);
+                boolean success = executor.execute(customAction);
 
-                    boolean success =
-                            executor.execute(customAction);
-
-                    Toast.makeText(
-                            this,
-                            success
-                                    ? "Custom voice command chal gaya"
-                                    : "Custom command ka action nahi chala",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                } catch (Exception e) {
-
-                    Toast.makeText(
-                            this,
-                            "Custom command execute nahi hua",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
+                Toast.makeText(
+                        this,
+                        success
+                                ? "Custom Voice Command chala: " + spokenCommand
+                                : "Custom Command nahi chal paya",
+                        Toast.LENGTH_SHORT
+                ).show();
 
                 return;
             }
         }
 
-        // 2. PURANE FLOATING BUTTON COMMAND CHECK
-        Item found = findVoiceItem(command);
+        // अगर Custom Command नहीं मिला तो Floating Button खोजें
+        Item found = findVoiceItem(spokenCommand);
 
         if (found != null) {
             performItem(found);
             return;
         }
 
-        // 3. PURANE APP OPEN COMMAND CHECK
-        if (openMatchingApp(command)) {
-            return;
+        // आखिरी विकल्प: सामान्य फोन कमांड या App खोलना
+        GestureActionExecutor executor =
+                new GestureActionExecutor(this);
+
+        boolean success = executor.execute(spokenCommand);
+
+        if (!success) {
+            Toast.makeText(
+                    this,
+                    "Command nahi samajh aaya: " + spokenCommand,
+                    Toast.LENGTH_SHORT
+            ).show();
         }
-
-        Toast.makeText(this,
-                "Command samajh nahi aaya: " + command,
-                Toast.LENGTH_LONG).show();
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-
-        if (intent != null
-                && "com.gestureai.demo.VOICE_COMMAND"
-                .equals(intent.getAction())) {
-
-            String command =
-                    intent.getStringExtra("voice_command");
-
-            if (command != null && !command.trim().isEmpty()) {
-                handleVoiceCommand(command);
-            }
-        }
-
-        return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
 
-        handler.removeCallbacks(profileChecker);
+        if (handler != null) {
+            handler.removeCallbacks(profileChecker);
+        }
 
         if (voiceHelper != null) {
             voiceHelper.stop();
@@ -951,7 +895,8 @@ public class FloatingOverlayService extends Service {
             if (plus != null) {
                 try {
                     wm.removeView(plus);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
 
                 plus = null;
             }
@@ -962,7 +907,8 @@ public class FloatingOverlayService extends Service {
                     if (item.view != null) {
                         wm.removeView(item.view);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
         }
 
@@ -975,4 +921,4 @@ public class FloatingOverlayService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-                    }
+}
