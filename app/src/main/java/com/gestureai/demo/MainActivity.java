@@ -3,85 +3,82 @@ package com.gestureai.demo;
 
 import android.Manifest;
 import android.app.Activity;
-import android.os.Bundle;
-import android.os.Build;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.provider.Settings;
 import android.net.Uri;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.webkit.WebChromeClient;
-import android.webkit.PermissionRequest;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
-import android.view.ViewGroup;
-import android.graphics.Color;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Toast;
-import android.content.ComponentName;
 
-import androidx.core.app.ActivityCompat;
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.webkit.WebViewAssetLoader;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayInputStream;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
 
-    private WebView web;
+    private static final int REQUEST_CAMERA = 101;
+    private static final int REQUEST_AUDIO = 102;
+    private static final int REQUEST_NOTIFICATION = 103;
+
+    private WebView webView;
     private WebViewAssetLoader assetLoader;
-    private CustomVoiceCommandStore customVoiceStore;
 
-    private static final int CAMERA_PERMISSION_CODE = 7;
-    private static final int AUDIO_PERMISSION_CODE = 8;
-    private static final int NOTIFICATION_PERMISSION_CODE = 9;
+    private PermissionRequest pendingWebPermission;
+    private boolean pendingCameraPermission;
+    private boolean pendingAudioPermission;
 
-    private static final String APP_HOST =
-            "appassets.androidplatform.net";
+    private boolean pageLoaded = false;
 
-    private boolean isTrustedAssetUrl(Uri uri) {
-        return uri != null
-                && "https".equalsIgnoreCase(uri.getScheme())
-                && APP_HOST.equalsIgnoreCase(uri.getHost())
-                && uri.getPath() != null
-                && uri.getPath().startsWith("/assets/");
-    }
-
-    private boolean isTrustedOrigin(Uri uri) {
-        return uri != null
-                && "https".equalsIgnoreCase(uri.getScheme())
-                && APP_HOST.equalsIgnoreCase(uri.getHost());
-    }
-
-    private WebResourceResponse blockedResponse() {
-        return new WebResourceResponse(
-                "text/plain",
-                "UTF-8",
-                403,
-                "Blocked",
-                Collections.emptyMap(),
-                new ByteArrayInputStream(
-                        "Blocked external content".getBytes()
-                )
-        );
-    }
+    private static final String APP_URL =
+            "https://appassets.androidplatform.net/assets/index.html";
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        customVoiceStore = new CustomVoiceCommandStore(this);
+        createWebView();
 
-        getWindow().setStatusBarColor(Color.rgb(10, 15, 30));
-        getWindow().setNavigationBarColor(Color.rgb(10, 15, 30));
+        getOnBackPressedDispatcher().addCallback(
+                this,
+                new OnBackPressedCallback(true) {
+                    @Override
+                    public void handleOnBackPressed() {
+
+                        if (webView != null && webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+                }
+        );
+
+        requestNotificationPermissionIfNeeded();
+    }
+
+    private void createWebView() {
+
+        webView = new WebView(this);
+
+        setContentView(webView);
 
         assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler(
@@ -90,103 +87,165 @@ public class MainActivity extends Activity {
                 )
                 .build();
 
-        web = new WebView(this);
+        WebSettings settings = webView.getSettings();
 
-        web.getSettings().setJavaScriptEnabled(true);
-        web.getSettings().setDomStorageEnabled(true);
-        web.getSettings().setMediaPlaybackRequiresUserGesture(false);
-        web.getSettings().setAllowFileAccess(false);
-        web.getSettings().setAllowContentAccess(false);
-        web.getSettings().setMixedContentMode(
-                android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        );
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(false);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(false);
+        settings.setMediaPlaybackRequiresUserGesture(true);
 
-        web.setBackgroundColor(Color.rgb(10, 15, 30));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true);
+        }
 
-        web.addJavascriptInterface(new AppBridge(), "Android");
-
-        web.setWebViewClient(new WebViewClient() {
-
-            @Override
-            public boolean shouldOverrideUrlLoading(
-                    WebView view,
-                    WebResourceRequest request
-            ) {
-                return !isTrustedAssetUrl(request.getUrl());
-            }
+        webView.setWebViewClient(new WebViewClient() {
 
             @Override
             public WebResourceResponse shouldInterceptRequest(
                     WebView view,
                     WebResourceRequest request
             ) {
-                Uri uri = request.getUrl();
-
-                if (isTrustedAssetUrl(uri)) {
-                    return assetLoader.shouldInterceptRequest(uri);
-                }
-
-                return blockedResponse();
+                return assetLoader.shouldInterceptRequest(
+                        request.getUrl()
+                );
             }
-        });
-
-        web.setWebChromeClient(new WebChromeClient() {
 
             @Override
-            public void onPermissionRequest(PermissionRequest request) {
+            public boolean shouldOverrideUrlLoading(
+                    WebView view,
+                    WebResourceRequest request
+            ) {
 
-                runOnUiThread(() -> {
+                Uri uri = request.getUrl();
 
-                    if (!isTrustedOrigin(request.getOrigin())) {
-                        request.deny();
-                        return;
-                    }
+                if (uri == null) {
+                    return true;
+                }
 
-                    boolean allowed = true;
+                String host = uri.getHost();
 
-                    for (String resource : request.getResources()) {
+                if ("appassets.androidplatform.net".equals(host)
+                        && "https".equals(uri.getScheme())) {
+                    return false;
+                }
 
-                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE
-                                .equals(resource)) {
+                return true;
+            }
 
-                            if (!hasCameraPermission()) {
-                                allowed = false;
-                                requestCameraPermission();
-                            }
+            @Override
+            public void onPageFinished(
+                    WebView view,
+                    String url
+            ) {
+                super.onPageFinished(view, url);
 
-                        } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                                .equals(resource)) {
-
-                            if (!hasAudioPermission()) {
-                                allowed = false;
-                                requestAudioPermission();
-                            }
-
-                        } else {
-                            allowed = false;
-                        }
-                    }
-
-                    if (allowed) {
-                        request.grant(request.getResources());
-                    } else {
-                        request.deny();
-                    }
-                });
+                if (APP_URL.equals(url)) {
+                    pageLoaded = true;
+                }
             }
         });
 
-        setContentView(web, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        webView.setWebChromeClient(new WebChromeClient() {
 
-        web.loadUrl(
-                "https://appassets.androidplatform.net/assets/index.html"
+            @Override
+            public void onPermissionRequest(
+                    PermissionRequest request
+            ) {
+
+                runOnUiThread(() -> handleWebPermissionRequest(request));
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(
+                    PermissionRequest request
+            ) {
+
+                if (pendingWebPermission == request) {
+                    pendingWebPermission = null;
+                    pendingCameraPermission = false;
+                    pendingAudioPermission = false;
+                }
+            }
+        });
+
+        webView.addJavascriptInterface(
+                new AppBridge(this),
+                "Android"
         );
+
+        webView.loadUrl(APP_URL);
+    }
+
+    private void handleWebPermissionRequest(
+            PermissionRequest request
+    ) {
+
+        if (request == null || isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        Uri origin = request.getOrigin();
+
+        if (origin == null
+                || !"https".equals(origin.getScheme())
+                || !"appassets.androidplatform.net".equals(origin.getHost())) {
+
+            request.deny();
+            return;
+        }
+
+        boolean needsCamera = false;
+        boolean needsAudio = false;
+
+        for (String resource : request.getResources()) {
+
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                needsCamera = true;
+            }
+
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                needsAudio = true;
+            }
+        }
+
+        if (!needsCamera && !needsAudio) {
+            request.deny();
+            return;
+        }
+
+        pendingWebPermission = request;
+
+        pendingCameraPermission =
+                needsCamera && !hasCameraPermission();
+
+        pendingAudioPermission =
+                needsAudio && !hasAudioPermission();
+
+        if (pendingCameraPermission) {
+            requestPermissions(
+                    new String[]{Manifest.permission.CAMERA},
+                    REQUEST_CAMERA
+            );
+            return;
+        }
+
+        if (pendingAudioPermission) {
+            requestPermissions(
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    REQUEST_AUDIO
+            );
+            return;
+        }
+
+        grantWebPermissionIfReady();
     }
 
     private boolean hasCameraPermission() {
+
         return ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
@@ -194,246 +253,148 @@ public class MainActivity extends Activity {
     }
 
     private boolean hasAudioPermission() {
+
         return ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private boolean hasNotificationPermission() {
+    private void grantWebPermissionIfReady() {
 
-        if (Build.VERSION.SDK_INT < 33) {
-            return true;
+        PermissionRequest request = pendingWebPermission;
+
+        if (request == null) {
+            return;
         }
 
-        return ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED;
-    }
+        if (request.getOrigin() == null
+                || !"appassets.androidplatform.net".equals(
+                        request.getOrigin().getHost())) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
 
-    private void requestCameraPermission() {
-        if (!hasCameraPermission()) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    new String[]{Manifest.permission.CAMERA},
-                    CAMERA_PERMISSION_CODE
-            );
+        if (pendingCameraPermission && !hasCameraPermission()) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
+
+        if (pendingAudioPermission && !hasAudioPermission()) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
+
+        JSONArray resources = new JSONArray();
+
+        for (String resource : request.getResources()) {
+
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && hasCameraPermission()) {
+                resources.put(resource);
+            }
+
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && hasAudioPermission()) {
+                resources.put(resource);
+            }
+        }
+
+        String[] granted = new String[resources.length()];
+
+        for (int i = 0; i < resources.length(); i++) {
+            granted[i] = resources.optString(i);
+        }
+
+        pendingWebPermission = null;
+        pendingCameraPermission = false;
+        pendingAudioPermission = false;
+
+        if (granted.length > 0) {
+            request.grant(granted);
+        } else {
+            request.deny();
         }
     }
 
-    private void requestAudioPermission() {
-        if (!hasAudioPermission()) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    new String[]{Manifest.permission.RECORD_AUDIO},
-                    AUDIO_PERMISSION_CODE
-            );
-        }
-    }
-
-    private void requestNotificationPermission() {
+    private void requestNotificationPermissionIfNeeded() {
 
         if (Build.VERSION.SDK_INT >= 33
-                && !hasNotificationPermission()) {
+                && ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED) {
 
-            ActivityCompat.requestPermissions(
-                    this,
+            requestPermissions(
                     new String[]{
                             Manifest.permission.POST_NOTIFICATIONS
                     },
-                    NOTIFICATION_PERMISSION_CODE
+                    REQUEST_NOTIFICATION
             );
         }
     }
 
-    private boolean isAccessibilityEnabled() {
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
 
-        int enabled;
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
 
-        try {
-            enabled = Settings.Secure.getInt(
-                    getContentResolver(),
-                    Settings.Secure.ACCESSIBILITY_ENABLED
-            );
-        } catch (Exception e) {
-            return false;
+        if (requestCode == REQUEST_CAMERA
+                || requestCode == REQUEST_AUDIO) {
+
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+            if (requestCode == REQUEST_CAMERA) {
+                pendingCameraPermission = !granted;
+            }
+
+            if (requestCode == REQUEST_AUDIO) {
+                pendingAudioPermission = !granted;
+            }
+
+            if (pendingWebPermission != null) {
+                grantWebPermissionIfReady();
+            }
+
+            if (!granted) {
+                showToast("Permission नहीं मिली");
+            }
+
+        } else if (requestCode == REQUEST_NOTIFICATION) {
+
+            // Notification permission is optional for opening the app.
         }
+    }
 
-        if (enabled != 1) return false;
+    private void showToast(String message) {
 
-        String services = Settings.Secure.getString(
-                getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        );
-
-        if (services == null) return false;
-
-        ComponentName component = new ComponentName(
+        Toast.makeText(
                 this,
-                GestureAccessibilityService.class
-        );
-
-        return services.contains(component.flattenToString());
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
     }
 
     public class AppBridge {
 
-        // CUSTOM VOICE COMMANDS
+        private final Context context;
+        private final CustomVoiceCommandStore commandStore;
 
-        @JavascriptInterface
-        public String getCustomVoiceCommands() {
-            return customVoiceStore.getCommandsJson();
-        }
-
-        @JavascriptInterface
-        public boolean saveCustomVoiceCommand(
-                String phrase,
-                String action
-        ) {
-            return customVoiceStore.saveCommand(phrase, action);
-        }
-
-        @JavascriptInterface
-        public boolean removeCustomVoiceCommand(String phrase) {
-            return customVoiceStore.removeCommand(phrase);
-        }
-
-        @JavascriptInterface
-        public void openHandGesture() {
-
-            runOnUiThread(() -> {
-
-                try {
-                    Intent intent = new Intent(
-                            MainActivity.this,
-                            HandGestureActivity.class
-                    );
-
-                    startActivity(intent);
-
-                } catch (Exception e) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Hand Gesture screen nahi khul saki",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public String getInstalledApps() {
-
-            JSONArray array = new JSONArray();
-
-            try {
-                Intent intent = new Intent(Intent.ACTION_MAIN);
-                intent.addCategory(Intent.CATEGORY_LAUNCHER);
-
-                List<ResolveInfo> apps =
-                        getPackageManager().queryIntentActivities(intent, 0);
-
-                Collections.sort(apps, new Comparator<ResolveInfo>() {
-                    @Override
-                    public int compare(ResolveInfo a, ResolveInfo b) {
-                        return a.loadLabel(getPackageManager()).toString()
-                                .compareToIgnoreCase(
-                                        b.loadLabel(getPackageManager()).toString()
-                                );
-                    }
-                });
-
-                for (ResolveInfo info : apps) {
-
-                    JSONObject item = new JSONObject();
-
-                    String label =
-                            info.loadLabel(getPackageManager()).toString();
-
-                    String packageName = info.activityInfo.packageName;
-
-                    boolean system =
-                            (info.activityInfo.applicationInfo.flags
-                                    & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
-
-                    item.put("name", label);
-                    item.put("package", packageName);
-                    item.put("system", system);
-
-                    array.put(item);
-                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-            return array.toString();
-                                    }
-        
-        @JavascriptInterface
-        public void launchApp(String packageName) {
-
-            runOnUiThread(() -> {
-
-                try {
-                    if (packageName == null ||
-                            packageName.trim().isEmpty()) {
-
-                        Toast.makeText(
-                                MainActivity.this,
-                                "App select nahi hua",
-                                Toast.LENGTH_SHORT
-                        ).show();
-
-                        return;
-                    }
-
-                    Intent launchIntent =
-                            getPackageManager().getLaunchIntentForPackage(
-                                    packageName
-                            );
-
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(
-                                Intent.FLAG_ACTIVITY_NEW_TASK
-                        );
-                        startActivity(launchIntent);
-                    } else {
-                        Toast.makeText(
-                                MainActivity.this,
-                                "Is app ko open nahi kar sakte",
-                                Toast.LENGTH_SHORT
-                        ).show();
-                    }
-
-                } catch (Exception e) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "App open nahi hua",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void requestPermissions() {
-            runOnUiThread(() -> requestCameraPermission());
-        }
-
-        @JavascriptInterface
-        public void requestCameraPermission() {
-            runOnUiThread(() ->
-                    MainActivity.this.requestCameraPermission()
-            );
-        }
-
-        @JavascriptInterface
-        public void requestAudioPermission() {
-            runOnUiThread(() ->
-                    MainActivity.this.requestAudioPermission()
-            );
+        AppBridge(Context context) {
+            this.context = context.getApplicationContext();
+            this.commandStore = new CustomVoiceCommandStore(context);
         }
 
         @JavascriptInterface
@@ -447,253 +408,654 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public boolean isOverlayAllowed() {
-            return Settings.canDrawOverlays(MainActivity.this);
-        }
-
-        @JavascriptInterface
-        public void requestOverlayPermission() {
+        public void requestCameraPermission() {
 
             runOnUiThread(() -> {
 
-                if (!Settings.canDrawOverlays(MainActivity.this)) {
-
-                    Intent intent = new Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:" + getPackageName())
+                if (!hasCameraPermission()) {
+                    MainActivity.this.requestPermissions(
+                            new String[]{Manifest.permission.CAMERA},
+                            REQUEST_CAMERA
                     );
-
-                    startActivity(intent);
+                } else {
+                    showToast("Camera Permission पहले से मिली हुई है");
                 }
             });
         }
 
         @JavascriptInterface
-        public void openAccessibilitySettings() {
-
-            runOnUiThread(() -> {
-                startActivity(new Intent(
-                        Settings.ACTION_ACCESSIBILITY_SETTINGS
-                ));
-            });
-        }
-
-        @JavascriptInterface
-        public boolean isAccessibilityReady() {
-            return isAccessibilityEnabled();
-        }
-
-        @JavascriptInterface
-        public void startFloating() {
-
-            runOnUiThread(() -> {
-
-                if (!Settings.canDrawOverlays(MainActivity.this)) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Pehle Display over other apps permission dein",
-                            Toast.LENGTH_LONG
-                    ).show();
-                    return;
-                }
-
-                if (!isAccessibilityEnabled()) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Pehle Gesture AI Accessibility ON karein",
-                            Toast.LENGTH_LONG
-                    ).show();
-                    return;
-                }
-
-                try {
-                    Intent intent = new Intent(
-                            MainActivity.this,
-                            FloatingOverlayService.class
-                    );
-
-                    startService(intent);
-
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Floating Control shuru ho gaya",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                } catch (Exception e) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Floating Control shuru nahi hua",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void stopFloating() {
-
-            runOnUiThread(() -> {
-
-                stopService(new Intent(
-                        MainActivity.this,
-                        FloatingOverlayService.class
-                ));
-
-                Toast.makeText(
-                        MainActivity.this,
-                        "Floating Control band ho gaya",
-                        Toast.LENGTH_SHORT
-                ).show();
-            });
-        }
-
-        @JavascriptInterface
-        public void startVoiceControl() {
+        public void requestAudioPermission() {
 
             runOnUiThread(() -> {
 
                 if (!hasAudioPermission()) {
-                    requestAudioPermission();
-
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Microphone permission dein, phir Voice ON dabayein",
-                            Toast.LENGTH_LONG
-                    ).show();
-
-                    return;
-                }
-
-                if (!hasNotificationPermission()) {
-                    requestNotificationPermission();
-
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Notification permission dein, phir Voice ON dabayein",
-                            Toast.LENGTH_LONG
-                    ).show();
-
-                    return;
-                }
-
-                try {
-                    Intent intent = new Intent(
-                            MainActivity.this,
-                            VoiceForegroundService.class
+                    MainActivity.this.requestPermissions(
+                            new String[]{Manifest.permission.RECORD_AUDIO},
+                            REQUEST_AUDIO
                     );
-
-                    intent.setAction(
-                            VoiceForegroundService.ACTION_START
-                    );
-
-                    if (Build.VERSION.SDK_INT >= 26) {
-                        startForegroundService(intent);
-                    } else {
-                        startService(intent);
-                    }
-
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Voice Control shuru ho raha hai",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                } catch (Exception e) {
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Voice Control shuru nahi hua: " + e.getMessage(),
-                            Toast.LENGTH_LONG
-                    ).show();
+                } else {
+                    showToast("Microphone Permission पहले से मिली हुई है");
                 }
             });
         }
 
         @JavascriptInterface
-        public void stopVoiceControl() {
+        public void openHandGesture() {
 
             runOnUiThread(() -> {
 
-                stopService(new Intent(
+                Intent intent = new Intent(
                         MainActivity.this,
-                        VoiceForegroundService.class
-                ));
+                        HandGestureActivity.class
+                );
 
-                Toast.makeText(
-                        MainActivity.this,
-                        "Voice Control band ho gaya",
-                        Toast.LENGTH_SHORT
-                ).show();
+                startActivity(intent);
             });
+        }
+
+        @JavascriptInterface
+        public String getCustomVoiceCommands() {
+            return commandStore.getCommandsJson();
+        }
+
+        @JavascriptInterface
+        public boolean saveCustomVoiceCommand(
+                String phrase,
+                String action
+        ) {
+
+            if (phrase == null || action == null
+                    || phrase.trim().isEmpty()
+                    || action.trim().isEmpty()) {
+                return false;
+            }
+
+            return commandStore.saveCommand(
+                    phrase.trim(),
+                    action.trim()
+            );
+        }
+
+        @JavascriptInterface
+        public boolean removeCustomVoiceCommand(String phrase) {
+
+            if (phrase == null || phrase.trim().isEmpty()) {
+                return false;
+            }
+
+            return commandStore.removeCommand(phrase.trim());
+        }
+
+        @JavascriptInterface
+        public String getInstalledApps() {
+
+            JSONArray apps = new JSONArray();
+
+            try {
+
+                Intent intent = new Intent(Intent.ACTION_MAIN);
+                intent.addCategory(Intent.CATEGORY_LAUNCHER);
+
+                PackageManager pm = getPackageManager();
+
+                List<ResolveInfo> results =
+                        pm.queryIntentActivities(intent, 0);
+
+                for (ResolveInfo info : results) {
+
+                    if (info.activityInfo == null) {
+                        continue;
+                    }
+
+                    JSONObject item = new JSONObject();
+
+                    item.put(
+                            "name",
+                            info.loadLabel(pm).toString()
+                    );
+
+                    item.put(
+                            "packageName",
+                            info.activityInfo.packageName
+                    );
+
+                    apps.put(item);
+                }
+
+            } catch (Exception e) {
+                return "[]";
+            }
+
+            return apps.toString();
+                        }
+        
+package com.gestureai.demo;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Toast;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.webkit.WebViewAssetLoader;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.List;
+
+public class MainActivity extends AppCompatActivity {
+
+    private static final int REQUEST_CAMERA = 101;
+    private static final int REQUEST_AUDIO = 102;
+    private static final int REQUEST_NOTIFICATION = 103;
+
+    private WebView webView;
+    private WebViewAssetLoader assetLoader;
+
+    private PermissionRequest pendingWebPermission;
+    private boolean pendingCameraPermission;
+    private boolean pendingAudioPermission;
+
+    private boolean pageLoaded = false;
+
+    private static final String APP_URL =
+            "https://appassets.androidplatform.net/assets/index.html";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        createWebView();
+
+        getOnBackPressedDispatcher().addCallback(
+                this,
+                new OnBackPressedCallback(true) {
+                    @Override
+                    public void handleOnBackPressed() {
+
+                        if (webView != null && webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+                }
+        );
+
+        requestNotificationPermissionIfNeeded();
+    }
+
+    private void createWebView() {
+
+        webView = new WebView(this);
+
+        setContentView(webView);
+
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler(
+                        "/assets/",
+                        new WebViewAssetLoader.AssetsPathHandler(this)
+                )
+                .build();
+
+        WebSettings settings = webView.getSettings();
+
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(false);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(false);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true);
+        }
+
+        webView.setWebViewClient(new WebViewClient() {
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(
+                    WebView view,
+                    WebResourceRequest request
+            ) {
+                return assetLoader.shouldInterceptRequest(
+                        request.getUrl()
+                );
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(
+                    WebView view,
+                    WebResourceRequest request
+            ) {
+
+                Uri uri = request.getUrl();
+
+                if (uri == null) {
+                    return true;
+                }
+
+                String host = uri.getHost();
+
+                if ("appassets.androidplatform.net".equals(host)
+                        && "https".equals(uri.getScheme())) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            @Override
+            public void onPageFinished(
+                    WebView view,
+                    String url
+            ) {
+                super.onPageFinished(view, url);
+
+                if (APP_URL.equals(url)) {
+                    pageLoaded = true;
+                }
+            }
+        });
+
+        webView.setWebChromeClient(new WebChromeClient() {
+
+            @Override
+            public void onPermissionRequest(
+                    PermissionRequest request
+            ) {
+
+                runOnUiThread(() -> handleWebPermissionRequest(request));
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(
+                    PermissionRequest request
+            ) {
+
+                if (pendingWebPermission == request) {
+                    pendingWebPermission = null;
+                    pendingCameraPermission = false;
+                    pendingAudioPermission = false;
+                }
+            }
+        });
+
+        webView.addJavascriptInterface(
+                new AppBridge(this),
+                "Android"
+        );
+
+        webView.loadUrl(APP_URL);
+    }
+
+    private void handleWebPermissionRequest(
+            PermissionRequest request
+    ) {
+
+        if (request == null || isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        Uri origin = request.getOrigin();
+
+        if (origin == null
+                || !"https".equals(origin.getScheme())
+                || !"appassets.androidplatform.net".equals(origin.getHost())) {
+
+            request.deny();
+            return;
+        }
+
+        boolean needsCamera = false;
+        boolean needsAudio = false;
+
+        for (String resource : request.getResources()) {
+
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                needsCamera = true;
+            }
+
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                needsAudio = true;
+            }
+        }
+
+        if (!needsCamera && !needsAudio) {
+            request.deny();
+            return;
+        }
+
+        pendingWebPermission = request;
+
+        pendingCameraPermission =
+                needsCamera && !hasCameraPermission();
+
+        pendingAudioPermission =
+                needsAudio && !hasAudioPermission();
+
+        if (pendingCameraPermission) {
+            requestPermissions(
+                    new String[]{Manifest.permission.CAMERA},
+                    REQUEST_CAMERA
+            );
+            return;
+        }
+
+        if (pendingAudioPermission) {
+            requestPermissions(
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    REQUEST_AUDIO
+            );
+            return;
+        }
+
+        grantWebPermissionIfReady();
+    }
+
+    private boolean hasCameraPermission() {
+
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasAudioPermission() {
+
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void grantWebPermissionIfReady() {
+
+        PermissionRequest request = pendingWebPermission;
+
+        if (request == null) {
+            return;
+        }
+
+        if (request.getOrigin() == null
+                || !"appassets.androidplatform.net".equals(
+                        request.getOrigin().getHost())) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
+
+        if (pendingCameraPermission && !hasCameraPermission()) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
+
+        if (pendingAudioPermission && !hasAudioPermission()) {
+            request.deny();
+            pendingWebPermission = null;
+            return;
+        }
+
+        JSONArray resources = new JSONArray();
+
+        for (String resource : request.getResources()) {
+
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && hasCameraPermission()) {
+                resources.put(resource);
+            }
+
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && hasAudioPermission()) {
+                resources.put(resource);
+            }
+        }
+
+        String[] granted = new String[resources.length()];
+
+        for (int i = 0; i < resources.length(); i++) {
+            granted[i] = resources.optString(i);
+        }
+
+        pendingWebPermission = null;
+        pendingCameraPermission = false;
+        pendingAudioPermission = false;
+
+        if (granted.length > 0) {
+            request.grant(granted);
+        } else {
+            request.deny();
+        }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+
+        if (Build.VERSION.SDK_INT >= 33
+                && ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED) {
+
+            requestPermissions(
+                    new String[]{
+                            Manifest.permission.POST_NOTIFICATIONS
+                    },
+                    REQUEST_NOTIFICATION
+            );
         }
     }
 
     @Override
     public void onRequestPermissionsResult(
             int requestCode,
-            String[] permissions,
-            int[] grantResults
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
     ) {
+
         super.onRequestPermissionsResult(
                 requestCode,
                 permissions,
                 grantResults
         );
 
-        if (grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == REQUEST_CAMERA
+                || requestCode == REQUEST_AUDIO) {
 
-            if (requestCode == CAMERA_PERMISSION_CODE) {
-                Toast.makeText(
-                        this,
-                        "Camera permission mil gayi",
-                        Toast.LENGTH_SHORT
-                ).show();
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
 
-            } else if (requestCode == AUDIO_PERMISSION_CODE) {
-                Toast.makeText(
-                        this,
-                        "Microphone permission mil gayi",
-                        Toast.LENGTH_SHORT
-                ).show();
-
-            } else if (requestCode == NOTIFICATION_PERMISSION_CODE) {
-                Toast.makeText(
-                        this,
-                        "Notification permission mil gayi",
-                        Toast.LENGTH_SHORT
-                ).show();
+            if (requestCode == REQUEST_CAMERA) {
+                pendingCameraPermission = !granted;
             }
 
-        } else if (requestCode == AUDIO_PERMISSION_CODE
-                || requestCode == NOTIFICATION_PERMISSION_CODE) {
+            if (requestCode == REQUEST_AUDIO) {
+                pendingAudioPermission = !granted;
+            }
 
-            Toast.makeText(
-                    this,
-                    "Voice Control ke liye permission zaroori hai",
-                    Toast.LENGTH_LONG
-            ).show();
+            if (pendingWebPermission != null) {
+                grantWebPermissionIfReady();
+            }
+
+            if (!granted) {
+                showToast("Permission नहीं मिली");
+            }
+
+        } else if (requestCode == REQUEST_NOTIFICATION) {
+
+            // Notification permission is optional for opening the app.
         }
     }
 
-    @Override
-    public void onBackPressed() {
-        if (web != null && web.canGoBack()) {
-            web.goBack();
-        } else {
-            super.onBackPressed();
+    private void showToast(String message) {
+
+        Toast.makeText(
+                this,
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    public class AppBridge {
+
+        private final Context context;
+        private final CustomVoiceCommandStore commandStore;
+
+        AppBridge(Context context) {
+            this.context = context.getApplicationContext();
+            this.commandStore = new CustomVoiceCommandStore(context);
         }
-    }
 
-    @Override
-    protected void onDestroy() {
-
-        if (web != null) {
-            web.removeJavascriptInterface("Android");
-            web.destroy();
-            web = null;
+        @JavascriptInterface
+        public boolean isCameraAllowed() {
+            return hasCameraPermission();
         }
 
-        super.onDestroy();
-    }
-    }
+        @JavascriptInterface
+        public boolean isAudioAllowed() {
+            return hasAudioPermission();
+        }
+
+        @JavascriptInterface
+        public void requestCameraPermission() {
+
+            runOnUiThread(() -> {
+
+                if (!hasCameraPermission()) {
+                    MainActivity.this.requestPermissions(
+                            new String[]{Manifest.permission.CAMERA},
+                            REQUEST_CAMERA
+                    );
+                } else {
+                    showToast("Camera Permission पहले से मिली हुई है");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void requestAudioPermission() {
+
+            runOnUiThread(() -> {
+
+                if (!hasAudioPermission()) {
+                    MainActivity.this.requestPermissions(
+                            new String[]{Manifest.permission.RECORD_AUDIO},
+                            REQUEST_AUDIO
+                    );
+                } else {
+                    showToast("Microphone Permission पहले से मिली हुई है");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openHandGesture() {
+
+            runOnUiThread(() -> {
+
+                Intent intent = new Intent(
+                        MainActivity.this,
+                        HandGestureActivity.class
+                );
+
+                startActivity(intent);
+            });
+        }
+
+        @JavascriptInterface
+        public String getCustomVoiceCommands() {
+            return commandStore.getCommandsJson();
+        }
+
+        @JavascriptInterface
+        public boolean saveCustomVoiceCommand(
+                String phrase,
+                String action
+        ) {
+
+            if (phrase == null || action == null
+                    || phrase.trim().isEmpty()
+                    || action.trim().isEmpty()) {
+                return false;
+            }
+
+            return commandStore.saveCommand(
+                    phrase.trim(),
+                    action.trim()
+            );
+        }
+
+        @JavascriptInterface
+        public boolean removeCustomVoiceCommand(String phrase) {
+
+            if (phrase == null || phrase.trim().isEmpty()) {
+                return false;
+            }
+
+            return commandStore.removeCommand(phrase.trim());
+        }
+
+        @JavascriptInterface
+        public String getInstalledApps() {
+
+            JSONArray apps = new JSONArray();
+
+            try {
+
+                Intent intent = new Intent(Intent.ACTION_MAIN);
+                intent.addCategory(Intent.CATEGORY_LAUNCHER);
+
+                PackageManager pm = getPackageManager();
+
+                List<ResolveInfo> results =
+                        pm.queryIntentActivities(intent, 0);
+
+                for (ResolveInfo info : results) {
+
+                    if (info.activityInfo == null) {
+                        continue;
+                    }
+
+                    JSONObject item = new JSONObject();
+
+                    item.put(
+                            "name",
+                            info.loadLabel(pm).toString()
+                    );
+
+                    item.put(
+                            "packageName",
+                            info.activityInfo.packageName
+                    );
+
+                    apps.put(item);
+                }
+
+            } catch (Exception e) {
+                return "[]";
+            }
+
+            return apps.toString();
+            }
+            
