@@ -11,7 +11,6 @@ import com.google.mediapipe.tasks.core.BaseOptions;
 import com.google.mediapipe.tasks.vision.core.RunningMode;
 import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker;
 import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult;
-
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark;
 
 import org.json.JSONArray;
@@ -19,12 +18,14 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class HandGestureEngine {
 
     private static final String PREFS = "gesture_ai_data";
     private static final String DATA_KEY = "saved_hand_gestures";
     private static final int REQUIRED_SAMPLES = 5;
+    private static final float MATCH_THRESHOLD = 0.12f;
 
     private final Context context;
     private final SharedPreferences preferences;
@@ -41,10 +42,14 @@ public class HandGestureEngine {
         this.context = context.getApplicationContext();
 
         preferences = this.context.getSharedPreferences(
-                PREFS, Context.MODE_PRIVATE);
+                PREFS,
+                Context.MODE_PRIVATE
+        );
     }
 
-    public void initialize() throws Exception {
+    public synchronized void initialize() throws Exception {
+
+        close();
 
         BaseOptions baseOptions = BaseOptions.builder()
                 .setModelAssetPath("hand_landmarker.task")
@@ -61,55 +66,80 @@ public class HandGestureEngine {
                         .build();
 
         landmarker = HandLandmarker.createFromOptions(
-                context, options);
+                context,
+                options
+        );
     }
 
     private float[] getLandmarks(Bitmap bitmap) {
 
-        if (landmarker == null || bitmap == null) {
+        if (landmarker == null || bitmap == null
+                || bitmap.isRecycled()) {
             return null;
         }
 
         Bitmap safeBitmap = bitmap;
+        boolean copied = false;
 
-        if (bitmap.getConfig() != Bitmap.Config.ARGB_8888) {
-            safeBitmap = bitmap.copy(
-                    Bitmap.Config.ARGB_8888, false);
-        }
+        try {
 
-        if (safeBitmap == null) {
+            if (bitmap.getConfig() != Bitmap.Config.ARGB_8888) {
+
+                safeBitmap = bitmap.copy(
+                        Bitmap.Config.ARGB_8888,
+                        false
+                );
+
+                copied = true;
+            }
+
+            if (safeBitmap == null) return null;
+
+            MPImage image =
+                    new BitmapImageBuilder(safeBitmap).build();
+
+            HandLandmarkerResult result =
+                    landmarker.detect(image);
+
+            if (result == null || result.landmarks().isEmpty()) {
+                return null;
+            }
+
+            List<NormalizedLandmark> points =
+                    result.landmarks().get(0);
+
+            if (points == null || points.size() != 21) {
+                return null;
+            }
+
+            float[] values = new float[63];
+
+            for (int i = 0; i < 21; i++) {
+
+                values[i * 3] = points.get(i).x();
+                values[i * 3 + 1] = points.get(i).y();
+                values[i * 3 + 2] = points.get(i).z();
+            }
+
+            return normalize(values);
+
+        } catch (Exception e) {
             return null;
+
+        } finally {
+
+            if (copied && safeBitmap != null
+                    && !safeBitmap.isRecycled()) {
+                safeBitmap.recycle();
+            }
         }
-
-        MPImage image =
-                new BitmapImageBuilder(safeBitmap).build();
-
-        HandLandmarkerResult result =
-                landmarker.detect(image);
-
-        if (result.landmarks().isEmpty()) {
-            return null;
-        }
-
-        List<NormalizedLandmark> points =
-                result.landmarks().get(0);
-
-        if (points.size() != 21) {
-            return null;
-        }
-
-        float[] values = new float[63];
-
-        for (int i = 0; i < 21; i++) {
-            values[i * 3] = points.get(i).x();
-            values[i * 3 + 1] = points.get(i).y();
-            values[i * 3 + 2] = points.get(i).z();
-        }
-
-        return normalize(values);
     }
 
     private float[] normalize(float[] values) {
+
+        if (values == null || values.length != 63) {
+            return null;
+        }
 
         float originX = values[0];
         float originY = values[1];
@@ -123,33 +153,41 @@ public class HandGestureEngine {
             values[i * 3 + 1] -= originY;
             values[i * 3 + 2] -= originZ;
 
+            float x = values[i * 3];
+            float y = values[i * 3 + 1];
+            float z = values[i * 3 + 2];
+
             float distance = (float) Math.sqrt(
-                    values[i * 3] * values[i * 3] +
-                    values[i * 3 + 1] * values[i * 3 + 1] +
-                    values[i * 3 + 2] * values[i * 3 + 2]);
+                    x * x + y * y + z * z
+            );
 
             maxDistance = Math.max(maxDistance, distance);
         }
 
-        if (maxDistance > 0) {
-            for (int i = 0; i < values.length; i++) {
-                values[i] /= maxDistance;
-            }
+        if (maxDistance <= 0f) return null;
+
+        for (int i = 0; i < values.length; i++) {
+            values[i] /= maxDistance;
         }
 
         return values;
     }
 
     public synchronized boolean startLearning(
-            String name, String action) {
+            String name,
+            String action) {
 
-        if (name == null || name.trim().isEmpty()
-                || action == null || action.trim().isEmpty()) {
+        if (landmarker == null
+                || name == null
+                || name.trim().isEmpty()
+                || action == null
+                || action.trim().isEmpty()) {
             return false;
         }
 
         learningName = name.trim();
         learningAction = action.trim();
+
         learningSamples.clear();
 
         return true;
@@ -157,7 +195,7 @@ public class HandGestureEngine {
 
     public synchronized int addLearningFrame(Bitmap bitmap) {
 
-        if (learningName == null) {
+        if (learningName == null || landmarker == null) {
             return -1;
         }
 
@@ -171,28 +209,30 @@ public class HandGestureEngine {
 
         if (learningSamples.size() >= REQUIRED_SAMPLES) {
 
-            saveGesture(
+            boolean saved = saveGesture(
                     learningName,
                     learningAction,
-                    learningSamples);
+                    learningSamples
+            );
 
             learningSamples.clear();
             learningName = null;
             learningAction = null;
 
-            return REQUIRED_SAMPLES;
+            return saved ? REQUIRED_SAMPLES : -1;
         }
 
         return learningSamples.size();
     }
 
     public synchronized void cancelLearning() {
+
         learningSamples.clear();
         learningName = null;
         learningAction = null;
     }
 
-    private void saveGesture(
+    private boolean saveGesture(
             String name,
             String action,
             List<float[]> samples) {
@@ -200,14 +240,38 @@ public class HandGestureEngine {
         try {
 
             JSONArray all = getSavedData();
+            JSONArray updated = new JSONArray();
+
+            String target = normalizeName(name);
+
+            // पुराने नाम वाले Gesture को हटाएँ
+            for (int i = 0; i < all.length(); i++) {
+
+                JSONObject old = all.optJSONObject(i);
+
+                if (old == null) continue;
+
+                String oldName = normalizeName(
+                        old.optString("name", "")
+                );
+
+                if (!oldName.equals(target)) {
+                    updated.put(old);
+                }
+            }
 
             JSONObject gesture = new JSONObject();
-            gesture.put("name", name);
-            gesture.put("action", action);
+
+            gesture.put("name", name.trim());
+            gesture.put("action", action.trim());
 
             JSONArray sampleArray = new JSONArray();
 
             for (float[] sample : samples) {
+
+                if (sample == null || sample.length != 63) {
+                    continue;
+                }
 
                 JSONArray points = new JSONArray();
 
@@ -218,27 +282,29 @@ public class HandGestureEngine {
                 sampleArray.put(points);
             }
 
+            if (sampleArray.length() == 0) {
+                return false;
+            }
+
             gesture.put("samples", sampleArray);
+            updated.put(gesture);
 
-            all.put(gesture);
-
-            preferences.edit()
-                    .putString(DATA_KEY, all.toString())
-                    .apply();
+            return preferences.edit()
+                    .putString(DATA_KEY, updated.toString())
+                    .commit();
 
         } catch (Exception e) {
-            throw new IllegalStateException(
-                    "Gesture save failed", e);
+            return false;
         }
     }
 
     public synchronized JSONObject recognize(Bitmap bitmap) {
 
+        if (landmarker == null) return null;
+
         float[] current = getLandmarks(bitmap);
 
-        if (current == null) {
-            return null;
-        }
+        if (current == null) return null;
 
         JSONArray all = getSavedData();
 
@@ -249,37 +315,57 @@ public class HandGestureEngine {
 
             try {
 
-                JSONObject gesture = all.getJSONObject(i);
-                JSONArray samples = gesture.getJSONArray("samples");
+                JSONObject gesture = all.optJSONObject(i);
 
-                float totalDistance = 0;
+                if (gesture == null) continue;
+
+                JSONArray samples =
+                        gesture.optJSONArray("samples");
+
+                if (samples == null) continue;
+
+                float totalDistance = 0f;
                 int validSamples = 0;
 
                 for (int j = 0; j < samples.length(); j++) {
 
-                    JSONArray points = samples.getJSONArray(j);
+                    JSONArray points = samples.optJSONArray(j);
 
-                    if (points.length() != 63) continue;
+                    if (points == null || points.length() != 63) {
+                        continue;
+                    }
 
-                    float distance = 0;
+                    float distance = 0f;
+                    boolean valid = true;
 
                     for (int k = 0; k < 63; k++) {
+
+                        double stored = points.optDouble(k,
+                                Double.NaN);
+
+                        if (Double.isNaN(stored)
+                                || Double.isInfinite(stored)) {
+                            valid = false;
+                            break;
+                        }
+
                         float difference =
-                                current[k] - (float) points.getDouble(k);
+                                current[k] - (float) stored;
 
                         distance += difference * difference;
                     }
 
+                    if (!valid) continue;
+
                     totalDistance +=
-                            (float) Math.sqrt(distance / 63);
+                            (float) Math.sqrt(distance / 63f);
 
                     validSamples++;
                 }
 
                 if (validSamples == 0) continue;
 
-                float average =
-                        totalDistance / validSamples;
+                float average = totalDistance / validSamples;
 
                 if (average < bestDistance) {
                     bestDistance = average;
@@ -290,14 +376,19 @@ public class HandGestureEngine {
             }
         }
 
-        if (bestMatch != null && bestDistance < 0.12f) {
+        if (bestMatch != null
+                && bestDistance < MATCH_THRESHOLD) {
 
             try {
+
                 JSONObject match = new JSONObject();
-                match.put("name", bestMatch.getString("name"));
-                match.put("action", bestMatch.getString("action"));
+
+                match.put("name", bestMatch.optString("name"));
+                match.put("action", bestMatch.optString("action"));
                 match.put("distance", bestDistance);
+
                 return match;
+
             } catch (Exception ignored) {
             }
         }
@@ -305,12 +396,24 @@ public class HandGestureEngine {
         return null;
     }
 
+    private String normalizeName(String name) {
+
+        if (name == null) return "";
+
+        return name.trim().toLowerCase(Locale.ROOT);
+    }
+
     public synchronized JSONArray getSavedData() {
 
-        String saved = preferences.getString(DATA_KEY, "[]");
-
         try {
+
+            String saved = preferences.getString(
+                    DATA_KEY,
+                    "[]"
+            );
+
             return new JSONArray(saved);
+
         } catch (Exception e) {
             return new JSONArray();
         }
@@ -318,10 +421,16 @@ public class HandGestureEngine {
 
     public synchronized boolean removeGesture(String name) {
 
+        if (name == null || name.trim().isEmpty()) {
+            return false;
+        }
+
         JSONArray oldData = getSavedData();
         JSONArray newData = new JSONArray();
 
         boolean removed = false;
+
+        String target = normalizeName(name);
 
         for (int i = 0; i < oldData.length(); i++) {
 
@@ -329,7 +438,11 @@ public class HandGestureEngine {
 
             if (item == null) continue;
 
-            if (item.optString("name").equals(name)) {
+            String existing = normalizeName(
+                    item.optString("name", "")
+            );
+
+            if (existing.equals(target)) {
                 removed = true;
             } else {
                 newData.put(item);
@@ -337,19 +450,29 @@ public class HandGestureEngine {
         }
 
         if (removed) {
-            preferences.edit()
+
+            return preferences.edit()
                     .putString(DATA_KEY, newData.toString())
-                    .apply();
+                    .commit();
         }
 
-        return removed;
+        return false;
     }
 
-    public void close() {
+    public synchronized void close() {
 
         if (landmarker != null) {
-            landmarker.close();
+
+            try {
+                landmarker.close();
+            } catch (Exception ignored) {
+            }
+
             landmarker = null;
         }
+
+        learningSamples.clear();
+        learningName = null;
+        learningAction = null;
     }
-                  }
+}
