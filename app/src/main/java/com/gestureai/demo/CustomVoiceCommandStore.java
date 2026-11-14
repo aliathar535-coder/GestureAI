@@ -11,91 +11,83 @@ import java.util.Locale;
 
 public class CustomVoiceCommandStore {
 
-    private static final String PREF_NAME =
+    private static final String PREF =
             "gesture_ai_custom_voice_commands";
 
-    private static final String KEY_COMMANDS = "commands";
+    private static final String KEY =
+            "commands";
 
-    private final SharedPreferences prefs;
+    private final SharedPreferences preferences;
 
     public CustomVoiceCommandStore(Context context) {
-        prefs = context.getApplicationContext()
-                .getSharedPreferences(
-                        PREF_NAME,
-                        Context.MODE_PRIVATE
-                );
+        preferences = context.getApplicationContext()
+                .getSharedPreferences(PREF, Context.MODE_PRIVATE);
     }
 
     private String normalize(String value) {
         if (value == null) return "";
 
-        return value.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9\\u0900-\\u097F]", "");
+        return value.trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9\\u0900-\\u097F]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
     }
 
     private JSONArray readCommands() {
-        String saved = prefs.getString(KEY_COMMANDS, "[]");
-
         try {
+            String saved = preferences.getString(KEY, "[]");
             return new JSONArray(saved);
         } catch (Exception e) {
             return new JSONArray();
         }
     }
 
-    private void writeCommands(JSONArray commands) {
-        prefs.edit()
-                .putString(KEY_COMMANDS, commands.toString())
-                .apply();
+    private boolean writeCommands(JSONArray array) {
+        return preferences.edit()
+                .putString(KEY, array.toString())
+                .commit();
     }
 
     public synchronized boolean saveCommand(
             String phrase,
-            String action
-    ) {
-        if (phrase == null || action == null) {
+            String action) {
+
+        String cleanPhrase = phrase == null ? "" : phrase.trim();
+        String cleanAction = action == null ? "" : action.trim();
+
+        String normalized = normalize(cleanPhrase);
+
+        if (normalized.isEmpty() || cleanAction.isEmpty()) {
             return false;
         }
 
-        phrase = phrase.trim();
-        action = action.trim();
-
-        if (phrase.isEmpty() || action.isEmpty()) {
-            return false;
-        }
-
-        String newPhrase = normalize(phrase);
-
-        if (newPhrase.isEmpty()) {
-            return false;
-        }
-
-        JSONArray oldCommands = readCommands();
+        JSONArray old = readCommands();
         JSONArray updated = new JSONArray();
 
         try {
-            for (int i = 0; i < oldCommands.length(); i++) {
+            for (int i = 0; i < old.length(); i++) {
+                try {
+                    JSONObject item = old.getJSONObject(i);
 
-                JSONObject item = oldCommands.getJSONObject(i);
+                    String existing = normalize(
+                            item.optString("phrase", "")
+                    );
 
-                String existingPhrase =
-                        normalize(item.optString("phrase"));
-
-                if (!existingPhrase.equals(newPhrase)) {
-                    updated.put(item);
+                    if (!existing.equals(normalized)) {
+                        updated.put(item);
+                    }
+                } catch (Exception ignored) {
                 }
             }
 
-            JSONObject command = new JSONObject();
+            JSONObject newItem = new JSONObject();
+            newItem.put("phrase", cleanPhrase);
+            newItem.put("action", cleanAction);
 
-            command.put("phrase", phrase);
-            command.put("action", action);
+            updated.put(newItem);
 
-            updated.put(command);
-
-            writeCommands(updated);
-
-            return true;
+            return writeCommands(updated);
 
         } catch (Exception e) {
             return false;
@@ -104,97 +96,116 @@ public class CustomVoiceCommandStore {
 
     public synchronized boolean removeCommand(String phrase) {
 
-        if (phrase == null || phrase.trim().isEmpty()) {
-            return false;
-        }
-
         String target = normalize(phrase);
 
-        JSONArray oldCommands = readCommands();
-        JSONArray updated = new JSONArray();
+        if (target.isEmpty()) return false;
 
+        JSONArray old = readCommands();
+        JSONArray updated = new JSONArray();
         boolean removed = false;
 
         try {
-            for (int i = 0; i < oldCommands.length(); i++) {
+            for (int i = 0; i < old.length(); i++) {
+                try {
+                    JSONObject item = old.getJSONObject(i);
 
-                JSONObject item = oldCommands.getJSONObject(i);
+                    String existing = normalize(
+                            item.optString("phrase", "")
+                    );
 
-                String existingPhrase =
-                        normalize(item.optString("phrase"));
+                    if (existing.equals(target)) {
+                        removed = true;
+                    } else {
+                        updated.put(item);
+                    }
 
-                if (existingPhrase.equals(target)) {
-                    removed = true;
-                } else {
-                    updated.put(item);
+                } catch (Exception ignored) {
                 }
             }
 
-            if (removed) {
-                writeCommands(updated);
-            }
+            if (!removed) return false;
 
-            return removed;
+            return writeCommands(updated);
 
         } catch (Exception e) {
             return false;
         }
     }
 
-    public synchronized String findAction(String spokenCommand) {
+    public synchronized String findAction(String spoken) {
 
-        String spoken = normalize(spokenCommand);
+        String input = normalize(spoken);
 
-        if (spoken.isEmpty()) {
-            return null;
-        }
+        if (input.isEmpty()) return null;
 
         JSONArray commands = readCommands();
 
-        try {
+        String bestAction = null;
+        int bestLength = 0;
 
-            // पहले पूरा वाक्य मिलाएँ
-            for (int i = 0; i < commands.length(); i++) {
+        for (int i = 0; i < commands.length(); i++) {
 
+            try {
                 JSONObject item = commands.getJSONObject(i);
 
-                String phrase =
-                        normalize(item.optString("phrase"));
+                String phrase = normalize(
+                        item.optString("phrase", "")
+                );
 
-                if (!phrase.isEmpty() && spoken.equals(phrase)) {
-                    return item.optString("action", null);
+                String action = item.optString("action", "").trim();
+
+                if (phrase.isEmpty() || action.isEmpty()) {
+                    continue;
                 }
-            }
 
-            // अब सबसे लंबा मिलता-जुलता कमांड खोजें
-            String bestAction = null;
-            int bestLength = 0;
+                boolean exact = input.equals(phrase);
 
-            for (int i = 0; i < commands.length(); i++) {
+                boolean phraseInside =
+                        input.startsWith(phrase + " ")
+                        || input.endsWith(" " + phrase)
+                        || input.contains(" " + phrase + " ");
 
-                JSONObject item = commands.getJSONObject(i);
+                if (exact || phraseInside) {
 
-                String phrase =
-                        normalize(item.optString("phrase"));
-
-                if (!phrase.isEmpty()
-                        && spoken.contains(phrase)
-                        && phrase.length() > bestLength) {
-
-                    bestLength = phrase.length();
-
-                    bestAction = item.optString("action", null);
+                    if (phrase.length() > bestLength) {
+                        bestLength = phrase.length();
+                        bestAction = action;
+                    }
                 }
+
+            } catch (Exception ignored) {
             }
-
-            return bestAction;
-
-        } catch (Exception e) {
-            return null;
         }
+
+        return bestAction;
     }
 
-    public synchronized String getCommandsJson() {
-        return readCommands().toString();
+    public synchronized JSONArray getCommandsJson() {
+
+        JSONArray old = readCommands();
+        JSONArray clean = new JSONArray();
+
+        for (int i = 0; i < old.length(); i++) {
+            try {
+                JSONObject item = old.getJSONObject(i);
+
+                String phrase = item.optString("phrase", "").trim();
+                String action = item.optString("action", "").trim();
+
+                if (phrase.isEmpty() || action.isEmpty()) {
+                    continue;
+                }
+
+                JSONObject valid = new JSONObject();
+                valid.put("phrase", phrase);
+                valid.put("action", action);
+
+                clean.put(valid);
+
+            } catch (Exception ignored) {
+            }
+        }
+
+        return clean;
     }
 }
